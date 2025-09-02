@@ -56,6 +56,8 @@ INSTALLED_APPS = [
     'django_filters',
 
     'accounts',
+    'kpis',
+    'tasks',  
 ]
 
 SITE_ID = 1
