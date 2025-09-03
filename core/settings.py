@@ -37,6 +37,8 @@ CORS_ALLOWED_ORIGINS = [
         "https://91.99.112.51",
         'http://91.99.112.51:100',
         "https://91.99.112.51:100",
+        "http://localhost:5173", 
+        "http://127.0.0.1:5173",
     ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -60,6 +62,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'django_filters',
+    'corsheaders',
 
     'accounts',
     'kpis',
@@ -72,6 +75,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
