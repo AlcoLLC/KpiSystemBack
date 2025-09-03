@@ -48,3 +48,4 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         self.fields.pop(self.username_field, None)
         self.fields['email'] = serializers.EmailField()
         self.fields['password'] = serializers.CharField(write_only=True)
+        
