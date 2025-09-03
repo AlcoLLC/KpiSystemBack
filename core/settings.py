@@ -33,11 +33,15 @@ DEBUG = os.getenv('DEBUG', 'true').strip().lower() in ['true', '1', 'yes']
 ALLOWED_HOSTS = ['*']
 
 CORS_ALLOWED_ORIGINS = [
-    
-]
+        'http://91.99.112.51',
+        "https://91.99.112.51",
+        'http://91.99.112.51:100',
+        "https://91.99.112.51:100",
+    ]
 
 CSRF_TRUSTED_ORIGINS = [
-    
+    'http://91.99.112.51',
+    "https://91.99.112.51"
 ]
 
 AUTH_USER_MODEL = "accounts.User"
