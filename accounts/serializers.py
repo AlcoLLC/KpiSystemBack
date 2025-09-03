@@ -1,10 +1,6 @@
-# your_app/serializers.py
-
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import User, Department
-
-# ... UserSerializer ve DepartmentSerializer kodlarınız burada qalır ...
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -38,8 +34,12 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         if not user.is_active:
             raise serializers.ValidationError("İstifadəçi aktiv deyil.")
-
+            
         data = super().validate(attrs={self.username_field: user.get_username(), "password": password})
+
+        user_serializer = UserSerializer(self.user)
+        
+        data['user'] = user_serializer.data
         
         return data
 
