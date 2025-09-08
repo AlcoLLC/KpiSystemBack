@@ -1,6 +1,7 @@
 from rest_framework import viewsets, permissions, status
-from .models import User, Department
-from .serializers import UserSerializer, DepartmentSerializer, MyTokenObtainPairSerializer
+from .models import User, Department, Profile
+from .serializers import UserSerializer, DepartmentSerializer, MyTokenObtainPairSerializer, ProfileSerializer
+from .permissions import IsOwnerOrAdminOrReadOnly
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -32,3 +33,10 @@ class LogoutView(APIView):
             return Response(status=status.HTTP_205_RESET_CONTENT)
         except Exception as e:
             return Response(status=status.HTTP_400_BAD_REQUEST)
+        
+class ProfileViewSet(viewsets.ModelViewSet):
+    serializer_class = ProfileSerializer
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdminOrReadOnly]
+    
+    def get_queryset(self):
+        return Profile.objects.select_related('user').all()
