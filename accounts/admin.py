@@ -1,18 +1,13 @@
 from django.contrib import admin
-from .models import User, Department, Profile
-
+from .models import User, Department
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    list_display = ("id", "username", "email", "role")
+    list_display = ("id", "username", "email", "role", "first_name", "last_name", "phone_number")
     list_filter = ("role",)
+    search_fields = ('username', 'email', 'first_name', 'last_name')
 
 
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "manager", "lead")
-
-@admin.register(Profile)
-class ProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'first_name', 'last_name', 'email')
-    search_fields = ('user__username', 'first_name', 'last_name', 'email')

@@ -1,6 +1,6 @@
-from rest_framework import viewsets, permissions, status
-from .models import User, Department, Profile
-from .serializers import UserSerializer, DepartmentSerializer, MyTokenObtainPairSerializer, ProfileSerializer
+from rest_framework import viewsets, permissions, status, generics
+from .models import User, Department
+from .serializers import UserSerializer, DepartmentSerializer, MyTokenObtainPairSerializer
 from .permissions import IsOwnerOrAdminOrReadOnly
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.views import APIView
@@ -14,14 +14,29 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    @action(detail=False, methods=['get', 'put', 'patch'], url_path='me')
+    def me(self, request, *args, **kwargs):
+        """Get or update current user profile"""
+        if request.method == 'GET':
+            serializer = self.get_serializer(request.user)
+            return Response(serializer.data)
+        elif request.method in ['PUT', 'PATCH']:
+            partial = request.method == 'PATCH'
+            serializer = self.get_serializer(request.user, data=request.data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
+
 
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
+
 
 class LogoutView(APIView):
     permission_classes = (IsAuthenticated,)
@@ -34,20 +49,11 @@ class LogoutView(APIView):
             return Response(status=status.HTTP_205_RESET_CONTENT)
         except Exception as e:
             return Response(status=status.HTTP_400_BAD_REQUEST)
-        
-class ProfileViewSet(viewsets.ModelViewSet):
-    serializer_class = ProfileSerializer
+
+class UserProfileView(generics.RetrieveUpdateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        return Profile.objects.filter(user=self.request.user)
-
-    @action(detail=False, methods=['get', 'put', 'patch'], url_path='me')
-    def me(self, request, *args, **kwargs):
-        self.kwargs['pk'] = request.user.profile.pk
-        if request.method == 'GET':
-            return self.retrieve(request, *args, **kwargs)
-        elif request.method == 'PUT':
-            return self.update(request, *args, **kwargs)
-        elif request.method == 'PATCH':
-            return self.partial_update(request, *args, **kwargs)
+    def get_object(self):
+        return self.request.user
