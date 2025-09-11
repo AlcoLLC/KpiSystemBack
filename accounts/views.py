@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.decorators import action
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -36,7 +37,17 @@ class LogoutView(APIView):
         
 class ProfileViewSet(viewsets.ModelViewSet):
     serializer_class = ProfileSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdminOrReadOnly]
-    
+    permission_classes = [permissions.IsAuthenticated]
+
     def get_queryset(self):
-        return Profile.objects.select_related('user').all()
+        return Profile.objects.filter(user=self.request.user)
+
+    @action(detail=False, methods=['get', 'put', 'patch'], url_path='me')
+    def me(self, request, *args, **kwargs):
+        self.kwargs['pk'] = request.user.profile.pk
+        if request.method == 'GET':
+            return self.retrieve(request, *args, **kwargs)
+        elif request.method == 'PUT':
+            return self.update(request, *args, **kwargs)
+        elif request.method == 'PATCH':
+            return self.partial_update(request, *args, **kwargs)

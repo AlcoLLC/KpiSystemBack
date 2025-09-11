@@ -3,9 +3,13 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import User, Department, Profile
 
 class UserSerializer(serializers.ModelSerializer):
+    role_display = serializers.CharField(source='get_role_display', read_only=True)
+    department_name = serializers.CharField(source='managed_department.name', read_only=True, allow_null=True)
+
     class Meta:
         model = User
-        fields = ["id", "username", "email", "role"]
+        fields = ["id", "username", "email", "role", "role_display", "department_name", "first_name", "last_name"]
+        read_only_fields = ['role_display', 'department_name']
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
@@ -50,19 +54,38 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         self.fields['password'] = serializers.CharField(write_only=True)
     
 class ProfileSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='user.username', read_only=True)
-    role = serializers.CharField(read_only=True)
-    assigner_role = serializers.CharField(read_only=True)
+    user = UserSerializer(read_only=True) 
+
+    email = serializers.EmailField(source='user.email', required=False)
+    first_name = serializers.CharField(source='user.first_name', required=False)
+    last_name = serializers.CharField(source='user.last_name', required=False)
+    password = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = Profile
         fields = [
-            'username',
-            'first_name',
-            'last_name',
-            'email',
+            'id',
+            'user',
             'phone_number',
             'profile_photo',
-            'role',
-            'assigner_role',
+            'email',
+            'first_name',
+            'last_name',
+            'password',
         ]
+
+    def update(self, instance, validated_data):
+        user_data = validated_data.pop('user', {})
+        password = validated_data.pop('password', None) 
+
+        user = instance.user
+
+        user.first_name = user_data.get('first_name', user.first_name)
+        user.last_name = user_data.get('last_name', user.last_name)
+        user.email = user_data.get('email', user.email)
+
+        if password:
+            user.set_password(password)
+        
+        user.save()
+        return super().update(instance, validated_data)
