@@ -18,8 +18,6 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ['role_display', 'department_name']
 
     def validate_email(self, value):
-        """Custom email validation to handle updates correctly"""
-        # Get current instance if we're updating
         current_user = self.instance
         
         # Check if email already exists, excluding current user during updates
@@ -63,7 +61,7 @@ class UserSerializer(serializers.ModelSerializer):
 class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
-        fields = "__all__"
+        fields = "_all_"
 
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -97,8 +95,8 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         
         return data
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def _init_(self, *args, **kwargs):
+        super()._init_(*args, **kwargs)
         self.fields.pop(self.username_field, None)
         self.fields['email'] = serializers.EmailField()
         self.fields['password'] = serializers.CharField(write_only=True)
