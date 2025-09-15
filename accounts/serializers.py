@@ -53,6 +53,8 @@ class UserSerializer(serializers.ModelSerializer):
         return instance
     
     def create(self, validated_data):
+        if 'username' not in validated_data:
+            validated_data['username'] = validated_data['email']
         password = validated_data.pop('password')
         user = User.objects.create_user(password=password, **validated_data)
         return user
