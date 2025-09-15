@@ -32,26 +32,28 @@ class TaskViewSet(viewsets.ModelViewSet):
         if assignee.role == "employee":
             if not assignee.department:
                 raise ValidationError("The assigned employee does not belong to any department.")
-
             department = assignee.department
             designated_creator = department.manager or department.lead
-            
             if not designated_creator:
                 raise ValidationError(f"The department '{department.name}' has no assigned Manager or Lead.")
-            
             if creator != designated_creator:
                  raise PermissionDenied(f"You are not the designated manager or lead for this employee's department.")
-            
             serializer.save(created_by=designated_creator, approved=False)
             return
 
         elif assignee.role == "manager":
             if creator.role != "department_lead":
                 raise PermissionDenied("Only Department Leads can assign tasks to Managers.")
+
         elif assignee.role == "department_lead":
             if creator.role != "top_management":
                 raise PermissionDenied("Only Top Management can assign tasks to Department Leads.")
-        elif assignee.role in ["top_management", "admin"]:
-            raise PermissionDenied(f"You cannot assign tasks to a user with the role of {assignee.get_role_display()}.")
+
+        elif assignee.role == "top_management":
+            if creator.role != "department_lead":
+                raise PermissionDenied("Only Department Leads can create tasks for Top Management.")
+
+        elif assignee.role == "admin":
+            raise PermissionDenied("You cannot assign tasks to a user with the admin role.")
 
         serializer.save(created_by=creator, approved=False)
