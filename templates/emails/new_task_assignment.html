@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <p>Salam, {{ recipient_name }},</p>
+    <p>
+        Sizə <b>"{{ task.title }}"</b> adlı yeni bir tapşırıq təyin edildi.
+    </p>
+    <p><b>Təsvir:</b> {{ task.description|default:"Təsvir yoxdur." }}</p>
+    <p><b>Son Tarix:</b> {{ task.due_date|default:"Təyin edilməyib." }}</p>
+    <p>
+        Ətraflı məlumat üçün sistemə daxil olun.
+    </p>
+    <p>Hörmətlə,</p>
+    <p>Task Management Sistemi</p>
+</body>
+</html>

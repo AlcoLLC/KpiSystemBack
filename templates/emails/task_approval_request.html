@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <p>Salam, {{ superior_name }},</p>
+    <p>
+        <b>{{ creator_name }}</b> tərəfindən <b>"{{ task.title }}"</b> adlı yeni bir tapşırıq yaradıldı və sizin təsdiqinizi gözləyir.
+    </p>
+    <p><b>Təsvir:</b> {{ task.description|default:"Təsvir yoxdur." }}</p>
+    <p>Lütfən aşağıdakı linklərə klikləyərək tapşırığı təsdiqləyin və ya rədd edin:</p>
+    <p>
+        <a href="{{ approve_url }}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block;">
+            Təsdiqlə
+        </a>
+        <a href="{{ reject_url }}" style="background-color: #f44336; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; margin-left: 10px;">
+            Rədd et
+        </a>
+    </p>
+</body>
+</html>

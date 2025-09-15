@@ -56,3 +56,20 @@ class User(AbstractUser):
             "admin": "N/A",
         }
         return role_hierarchy.get(self.role, "Unknown")
+    
+    def get_superior(self):
+        if self.role == "employee":
+            if not self.department:
+                return None
+            return self.department.manager or self.department.lead
+
+        elif self.role == "manager":
+            if hasattr(self, 'managed_department'):
+                return self.managed_department.lead
+            return None
+
+        elif self.role == "department_lead":
+            return User.objects.filter(role="top_management").first()
+
+        else:
+            return None
