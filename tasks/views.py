@@ -1,12 +1,13 @@
 from django.db.models import Q
 from django.core.signing import Signer, BadSignature
 from django.shortcuts import get_object_or_404
-from rest_framework import viewsets, permissions, views, status
+from rest_framework import viewsets, permissions, views, status, generics
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
+from accounts.models import User, Department
 
 from .models import Task
-from .serializers import TaskSerializer
+from .serializers import TaskSerializer, TaskUserSerializer
 from .utils import send_task_notification_email
 
 class TaskViewSet(viewsets.ModelViewSet):
@@ -120,3 +121,46 @@ class TaskVerificationView(views.APIView):
             return Response({"detail": "Etibarsız və ya vaxtı keçmiş token."}, status=status.HTTP_400_BAD_REQUEST)
         except Task.DoesNotExist:
             return Response({"detail": "Tapşırıq tapılmadı. Artıq silinmiş ola bilər."}, status=status.HTTP_404_NOT_FOUND)
+
+class AssignableUserListView(generics.ListAPIView):
+    serializer_class = TaskUserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if user.is_staff or user.role == 'admin':
+            return User.objects.filter(is_active=True).order_by('first_name')
+
+        assignable_users = User.objects.filter(pk=user.pk) # Hər kəs özünə təyin edə bilər
+
+        if user.role == "top_management":
+            assignable_users |= User.objects.filter(role="department_lead")
+
+        elif user.role == "department_lead":
+            # Rəhbərin idarə etdiyi departamenti tapırıq
+            try:
+                # `related_name` "led_department" olduğu üçün bu şəkildə yoxlayırıq
+                department = user.led_department
+                assignable_users |= User.objects.filter(
+                    department=department,
+                    role__in=["manager", "employee"]
+                )
+            except Department.DoesNotExist:
+                # Rəhbərin departamenti yoxdursa, heç kim əlavə olunmur
+                pass
+
+        elif user.role == "manager":
+            # Menecerin idarə etdiyi departamenti tapırıq
+            try:
+                # `related_name` "managed_department" olduğu üçün bu şəkildə yoxlayırıq
+                department = user.managed_department
+                assignable_users |= User.objects.filter(
+                    department=department,
+                    role="employee"
+                )
+            except Department.DoesNotExist:
+                # Menecerin departamenti yoxdursa, heç kim əlavə olunmur
+                pass
+        
+        return assignable_users.distinct().order_by('first_name', 'last_name')

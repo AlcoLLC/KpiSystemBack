@@ -21,14 +21,24 @@ class TaskSerializer(serializers.ModelSerializer):
             'created_at', 'status',
         ]
 
-    def get_assignee_details(self, obj):  # Düzgün indent
+    def get_assignee_details(self, obj):  
         if obj.assignee:
             full_name = obj.assignee.get_full_name()
             return full_name if full_name else obj.assignee.username
         return None
 
-    def get_created_by_details(self, obj):  # Düzgün indent  
+    def get_created_by_details(self, obj):   
         if obj.created_by:
             full_name = obj.created_by.get_full_name()
             return full_name if full_name else obj.created_by.username
         return None
+
+class TaskUserSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'full_name', 'role']
+
+    def get_full_name(self, obj):
+        return obj.get_full_name()
