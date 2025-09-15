@@ -3,13 +3,16 @@ from .models import Task
 from accounts.models import User
 from accounts.serializers import UserSerializer
 
+
 class TaskSerializer(serializers.ModelSerializer):
-    assignee_details = serializers.SerializerMethodField()  # DÜZƏLİŞ
-    created_by_details = serializers.SerializerMethodField()  # DÜZƏLİŞ
+    assignee_details = serializers.StringRelatedField(source='assignee', read_only=True)
+    created_by_details = serializers.StringRelatedField(source='created_by', read_only=True)
+
     assignee = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
 
     class Meta:
         model = Task
+
         fields = [
             'id',
             'title',
@@ -25,6 +28,7 @@ class TaskSerializer(serializers.ModelSerializer):
             'approved',
             'created_at',
         ]
+
         read_only_fields = [
             'created_by',
             'created_by_details',
@@ -33,19 +37,24 @@ class TaskSerializer(serializers.ModelSerializer):
             'status',
         ]
 
-    def get_assignee_details(self, obj):
-        if obj.assignee:
-            # İstifadəçinin tam adını (first_name + last_name) götürürük
-            full_name = obj.assignee.get_full_name()
-            # Əgər tam adı yoxdursa, username-ni qaytarırıq
-            return full_name if full_name else obj.assignee.username
-        return None  # Təyin edilən yoxdursa, boş qaytarırıq
+        def get_assignee_details(self, obj):
+            if obj.assignee:
+                full_name = obj.assignee.get_full_name()
+                return full_name if full_name else obj.assignee.username
+            return None
 
     def get_created_by_details(self, obj):
-        """
-        'created_by_details' sahəsi üçün məlumat qaytarır.
-        """
         if obj.created_by:
             full_name = obj.created_by.get_full_name()
             return full_name if full_name else obj.created_by.username
         return None
+
+class TaskUserSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'full_name', 'role']
+
+    def get_full_name(self, obj):
+        return obj.get_full_name()
