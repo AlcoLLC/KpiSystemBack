@@ -18,8 +18,6 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ['role_display', 'department_name']
 
     def validate_email(self, value):
-        """Custom email validation to handle updates correctly"""
-        # Get current instance if we're updating
         current_user = self.instance
         
         # Check if email already exists, excluding current user during updates
