@@ -140,7 +140,7 @@ class AssignableUserListView(generics.ListAPIView):
         elif user.role == "department_lead":
             # Rəhbərin idarə etdiyi departamenti tapırıq
             try:
-                # related_name "led_department" olduğu üçün bu şəkildə yoxlayırıq
+                # `related_name` "led_department" olduğu üçün bu şəkildə yoxlayırıq
                 department = user.led_department
                 assignable_users |= User.objects.filter(
                     department=department,
@@ -153,7 +153,7 @@ class AssignableUserListView(generics.ListAPIView):
         elif user.role == "manager":
             # Menecerin idarə etdiyi departamenti tapırıq
             try:
-                # related_name "managed_department" olduğu üçün bu şəkildə yoxlayırıq
+                # `related_name` "managed_department" olduğu üçün bu şəkildə yoxlayırıq
                 department = user.managed_department
                 assignable_users |= User.objects.filter(
                     department=department,

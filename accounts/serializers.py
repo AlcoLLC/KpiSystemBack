@@ -61,7 +61,7 @@ class UserSerializer(serializers.ModelSerializer):
 class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
-        fields = "_all_"
+        fields = "__all__"
 
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -95,8 +95,8 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         
         return data
 
-    def _init_(self, *args, **kwargs):
-        super()._init_(*args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.fields.pop(self.username_field, None)
         self.fields['email'] = serializers.EmailField()
         self.fields['password'] = serializers.CharField(write_only=True)
