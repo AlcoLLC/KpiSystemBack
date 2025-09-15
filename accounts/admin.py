@@ -3,7 +3,7 @@ from .models import User, Department
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    list_display = ("id", "username", "email", "role", "first_name", "last_name", "phone_number")
+    list_display = ("id", "username", "email", "role", "first_name", "last_name", "phone_number", "department")
     list_filter = ("role",)
     search_fields = ('username', 'email', 'first_name', 'last_name')
 
