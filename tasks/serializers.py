@@ -34,6 +34,7 @@ class TaskSerializer(serializers.ModelSerializer):
             'created_by_details',
             'approved',
             'created_at',
+            'status',
         ]
 
         def get_assignee_details(self, obj):

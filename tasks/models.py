@@ -4,6 +4,7 @@ from django.conf import settings
 
 class Task(models.Model):
     STATUS_CHOICES = [
+        ("PENDING", "Pending"),
         ("TODO", "To Do"),
         ("IN_PROGRESS", "In Progress"),
         ("DONE", "Done"),
@@ -17,7 +18,7 @@ class Task(models.Model):
 
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="TODO")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING")
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default="MEDIUM")
     assignee = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tasks"

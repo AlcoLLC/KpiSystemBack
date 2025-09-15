@@ -77,7 +77,7 @@ class TaskViewSet(viewsets.ModelViewSet):
 
 
 class TaskVerificationView(views.APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.AllowAny] 
 
     def get(self, request, token, *args, **kwargs):
         signer = Signer()
@@ -89,29 +89,34 @@ class TaskVerificationView(views.APIView):
             task = get_object_or_404(Task, pk=task_id)
 
             if task.approved and (action in ['approve', 'accept']):
-                 return Response({"detail": "Bu tapşırıq artıq təsdiqlənib/qəbul edilib."}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"detail": "Bu tapşırıq artıq təsdiqlənib/qəbul edilib."}, status=status.HTTP_400_BAD_REQUEST)
 
             if action == 'approve':
                 task.approved = True
+                task.status = "TODO"  
                 task.save()
                 return Response({"detail": "Tapşırıq uğurla təsdiqləndi."}, status=status.HTTP_200_OK)
             
             elif action == 'accept':
                 task.approved = True
+                task.status = "TODO"
                 task.save()
                 return Response({"detail": "Tapşırıq uğurla qəbul edildi."}, status=status.HTTP_200_OK)
 
             elif action == 'reject':
                 title = task.title
                 task.delete()
-                return Response({"detail": f"'{title}' adlı tapşırıq rədd edildi və silindi."}, status=status.HTTP_200_OK)
+                return Response({"detail": f"'{title}' adlı tapşırıq rədd edildi və sistemdən silindi."}, status=status.HTTP_200_OK)
             
             elif action == 'reject_assignment':
                 title = task.title
                 task.delete()
-                return Response({"detail": f"'{title}' adlı təyin edilmiş tapşırıq rədd edildi və silindi."}, status=status.HTTP_200_OK)
+                return Response({"detail": f"'{title}' adlı təyin edilmiş tapşırıq rədd edildi və sistemdən silindi."}, status=status.HTTP_200_OK)
+            
+            else:
+                return Response({"detail": "Naməlum əməliyyat."}, status=status.HTTP_400_BAD_REQUEST)
 
         except BadSignature:
             return Response({"detail": "Etibarsız və ya vaxtı keçmiş token."}, status=status.HTTP_400_BAD_REQUEST)
         except Task.DoesNotExist:
-             return Response({"detail": "Tapşırıq tapılmadı. Artıq silinmiş ola bilər."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Tapşırıq tapılmadı. Artıq silinmiş ola bilər."}, status=status.HTTP_404_NOT_FOUND)
