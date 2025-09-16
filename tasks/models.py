@@ -6,9 +6,9 @@ from django.utils.translation import gettext_lazy as _
 class Task(models.Model):
     STATUS_CHOICES = [
         ("PENDING", _("Gözləmədə")),
-        ("TODO", _("Ediləcək")),
+        ("TODO", _("Təsdiqlənib")),
         ("IN_PROGRESS", _("Davam edir")),
-        ("DONE", _("Tamamlandı")),
+        ("DONE", _("Tamamlanıb")),
     ]
 
     PRIORITY_CHOICES = [
