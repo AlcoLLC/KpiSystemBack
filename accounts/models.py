@@ -43,7 +43,7 @@ class User(AbstractUser):
     )
 
     def __str__(self):
-        return f"{self.first_name} {self.last_name} ({self.get_role_display()})"
+        return f"{self.first_name} {self.last_name}  "
 
     @property
     def assigner_role(self):
