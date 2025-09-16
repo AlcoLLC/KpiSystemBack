@@ -1,20 +1,23 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
+from django.utils.translation import gettext_lazy as _
 
 class Task(models.Model):
     STATUS_CHOICES = [
-        ("PENDING", "Pending"),
-        ("TODO", "To Do"),
-        ("IN_PROGRESS", "In Progress"),
-        ("DONE", "Done"),
+        ("PENDING", _("Gözləmədə")),
+        ("TODO", _("Ediləcək")),
+        ("IN_PROGRESS", _("Davam edir")),
+        ("DONE", _("Tamamlandı")),
     ]
+
     PRIORITY_CHOICES = [
-        ("CRITICAL", "Critical"),
-        ("HIGH", "High"),
-        ("MEDIUM", "Medium"),
-        ("LOW", "Low"),
+        ("CRITICAL", _("Çox vacib")),
+        ("HIGH", _("Yüksək")),
+        ("MEDIUM", _("Orta")),
+        ("LOW", _("Aşağı")),
     ]
+
 
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
