@@ -9,6 +9,8 @@ class TaskSerializer(serializers.ModelSerializer):
     created_by_details = serializers.StringRelatedField(source='created_by', read_only=True)
 
     assignee = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
 
     class Meta:
         model = Task
@@ -27,6 +29,8 @@ class TaskSerializer(serializers.ModelSerializer):
             'due_date',
             'approved',
             'created_at',
+            'status_display',
+            'priority_display',
         ]
 
         read_only_fields = [

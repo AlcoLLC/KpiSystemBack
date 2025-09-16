@@ -11,6 +11,8 @@ from .serializers import TaskSerializer, TaskUserSerializer
 from .utils import send_task_notification_email
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import TaskFilter
+from .pagination import CustomPageNumberPagination
+
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
@@ -18,6 +20,7 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     filter_backends = [DjangoFilterBackend]
     filterset_class = TaskFilter 
+    pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
         user = self.request.user
