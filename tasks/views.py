@@ -9,10 +9,15 @@ from accounts.models import User, Department
 from .models import Task
 from .serializers import TaskSerializer, TaskUserSerializer
 from .utils import send_task_notification_email
+from django_filters.rest_framework import DjangoFilterBackend
+from .filters import TaskFilter
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = TaskFilter 
 
     def get_queryset(self):
         user = self.request.user
@@ -27,7 +32,6 @@ class TaskViewSet(viewsets.ModelViewSet):
         creator = self.request.user
         assignee = serializer.validated_data["assignee"]
 
-        # 1. İstifadəçi özünə tapşırıq təyin edirsə
         if creator == assignee:
             superior = creator.get_superior()
             if superior:
@@ -37,7 +41,6 @@ class TaskViewSet(viewsets.ModelViewSet):
                 serializer.save(created_by=creator, approved=True)
             return
 
-        # 2. İstifadəçi başqasına tapşırıq təyin edirsə
         if assignee.role == "employee":
             if not assignee.department:
                 raise ValidationError("The assigned employee does not belong to any department.")
@@ -132,35 +135,29 @@ class AssignableUserListView(generics.ListAPIView):
         if user.is_staff or user.role == 'admin':
             return User.objects.filter(is_active=True).order_by('first_name')
 
-        assignable_users = User.objects.filter(pk=user.pk) # Hər kəs özünə təyin edə bilər
+        assignable_users = User.objects.filter(pk=user.pk) 
 
         if user.role == "top_management":
             assignable_users |= User.objects.filter(role="department_lead")
 
         elif user.role == "department_lead":
-            # Rəhbərin idarə etdiyi departamenti tapırıq
             try:
-                # `related_name` "led_department" olduğu üçün bu şəkildə yoxlayırıq
                 department = user.led_department
                 assignable_users |= User.objects.filter(
                     department=department,
                     role__in=["manager", "employee"]
                 )
             except Department.DoesNotExist:
-                # Rəhbərin departamenti yoxdursa, heç kim əlavə olunmur
                 pass
 
         elif user.role == "manager":
-            # Menecerin idarə etdiyi departamenti tapırıq
             try:
-                # `related_name` "managed_department" olduğu üçün bu şəkildə yoxlayırıq
                 department = user.managed_department
                 assignable_users |= User.objects.filter(
                     department=department,
                     role="employee"
                 )
             except Department.DoesNotExist:
-                # Menecerin departamenti yoxdursa, heç kim əlavə olunmur
                 pass
         
         return assignable_users.distinct().order_by('first_name', 'last_name')
