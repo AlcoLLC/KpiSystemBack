@@ -133,34 +133,49 @@ class AssignableUserListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """
+        Kullanıcıların görev atayabileceği kişileri listeler.
+        Kurallar:
+        1. Admin/staff her zaman herkese görev atayabilir.
+        2. Kullanıcılar yalnızca kendi departmanlarındaki kişilere görev atayabilir.
+        3. Kullanıcılar yalnızca hiyerarşide kendilerinden daha alt roldeki kişilere görev atayabilir.
+        """
         user = self.request.user
 
+        # Kural 1: Admin veya staff ise, aktif olan herkesi (kendisi hariç) listeleyin.
         if user.is_staff or user.role == 'admin':
-            return User.objects.filter(is_active=True).order_by('first_name')
+            return User.objects.filter(is_active=True).exclude(pk=user.pk).order_by('first_name', 'last_name')
 
-        assignable_users = User.objects.filter(pk=user.pk) 
+        # Kullanıcının bir departmanı yoksa, kimseye görev atayamaz.
+        if not user.department:
+            return User.objects.none()
 
-        if user.role == "top_management":
-            assignable_users |= User.objects.filter(role="department_lead")
+        # Rol hiyerarşisini tanımlayalım (daha yüksek sayı, daha yüksek rütbe)
+        role_hierarchy = {
+            "top_management": 4,
+            "department_lead": 3,
+            "manager": 2,
+            "employee": 1,
+        }
 
-        elif user.role == "department_lead":
-            try:
-                department = user.led_department
-                assignable_users |= User.objects.filter(
-                    department=department,
-                    role__in=["manager", "employee"]
-                )
-            except Department.DoesNotExist:
-                pass
+        # Mevcut kullanıcının rütbesini alalım.
+        user_rank = role_hierarchy.get(user.role)
 
-        elif user.role == "manager":
-            try:
-                department = user.managed_department
-                assignable_users |= User.objects.filter(
-                    department=department,
-                    role="employee"
-                )
-            except Department.DoesNotExist:
-                pass
-        
-        return assignable_users.distinct().order_by('first_name', 'last_name')
+        # Eğer kullanıcının rütbesi tanımlı değilse veya en alttaysa (employee), kimseye atama yapamaz.
+        if not user_rank:
+            return User.objects.none()
+
+        # Mevcut kullanıcının rütbesinden daha düşük rütbeye sahip rolleri bulalım.
+        lower_roles = [role for role, rank in role_hierarchy.items() if rank < user_rank]
+
+        if not lower_roles:
+            return User.objects.none() # Atanacak daha alt bir rol yoksa boş liste döndür.
+
+        # Kural 2 & 3: Kullanıcının departmanındaki ve daha alt roldeki aktif kullanıcıları filtreleyelim.
+        assignable_users = User.objects.filter(
+            department=user.department,
+            role__in=lower_roles,
+            is_active=True
+        ).exclude(pk=user.pk).distinct().order_by('first_name', 'last_name')
+
+        return assignable_users
