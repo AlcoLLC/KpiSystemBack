@@ -58,7 +58,7 @@ class TaskUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'full_name', 'role']
+        fields = ['id', 'username', 'full_name', 'role', 'department']
 
     def get_full_name(self, obj):
         return obj.get_full_name()
