@@ -14,17 +14,6 @@ from .filters import TaskFilter
 from .pagination import CustomPageNumberPagination
 
 
-# Rolları və onların iyerarxik səviyyələrini müəyyən edən lüğət
-# Daha yüksək rəqəm daha yüksək səlahiyyət deməkdir.
-ROLE_HIERARCHY = {
-    "admin": 5,
-    "top_management": 4,
-    "department_lead": 3,
-    "manager": 2,
-    "employee": 1,
-}
-
-
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -42,51 +31,84 @@ class TaskViewSet(viewsets.ModelViewSet):
             Q(assignee=user) | Q(created_by=user)
         ).distinct().order_by('-created_at')
 
+    def _get_role_hierarchy_index(self, role):
+        """Get the index of a role in the hierarchy (lower index = higher role)"""
+        role_hierarchy = ["admin", "top_management", "department_lead", "manager", "employee"]
+        try:
+            return role_hierarchy.index(role)
+        except ValueError:
+            return -1
+
+    def _can_assign_to_role(self, creator_role, assignee_role):
+        """Check if creator role can assign tasks to assignee role"""
+        creator_index = self._get_role_hierarchy_index(creator_role)
+        assignee_index = self._get_role_hierarchy_index(assignee_role)
+        
+        # Invalid roles
+        if creator_index == -1 or assignee_index == -1:
+            return False
+            
+        # Higher roles (lower index) can assign to lower roles (higher index)
+        return creator_index < assignee_index
+
     def perform_create(self, serializer):
         creator = self.request.user
         assignee = serializer.validated_data["assignee"]
 
-        # 1. İstifadəçi özünə tapşırıq təyin edərsə (dəyişməyib)
+        # Self-assignment case
         if creator == assignee:
             superior = creator.get_superior()
             if superior:
                 task = serializer.save(created_by=creator, approved=False)
                 send_task_notification_email(task, notification_type='approval_request')
             else:
-                serializer.save(created_by=creator, approved=True, status="TODO")
+                serializer.save(created_by=creator, approved=True)
             return
 
-        # 2. 'admin' roluna tapşırıq təyin etməyi qadağan et
-        if assignee.role == "admin":
-            raise PermissionDenied("Siz 'admin' roluna sahib istifadəçiyə tapşırıq təyin edə bilməzsiniz.")
+        # Check if creator can assign to assignee based on role hierarchy
+        if not self._can_assign_to_role(creator.role, assignee.role):
+            role_permissions = {
+                "employee": "Employees cannot assign tasks to other users.",
+                "manager": "Managers can only assign tasks to employees.",
+                "department_lead": "Department Leads can assign tasks to managers and employees.",
+                "top_management": "Top Management can assign tasks to department leads, managers, and employees.",
+                "admin": "Admins can assign tasks to all users."
+            }
+            error_message = role_permissions.get(creator.role, "You don't have permission to assign tasks to this user.")
+            raise PermissionDenied(error_message)
 
-        # 3. İyerarxiya səviyyələrini yoxla
-        creator_level = ROLE_HIERARCHY.get(creator.role, 0)
-        assignee_level = ROLE_HIERARCHY.get(assignee.role, 0)
-
-        # 4. Əsas icazə yoxlaması: Tapşırıq verənin səviyyəsi təyin olunanın səviyyəsindən yüksək olmalıdır
-        if creator_level > assignee_level:
-            # Departament məhdudiyyəti (köhnə məntiqdən fərqli olaraq daha çevikdir)
-            # Yalnız menecer və departament rəhbəri öz departamentləri daxilində tapşırıq verə bilər
-            if creator.role in ["manager", "department_lead"]:
-                if not creator.department:
-                     raise ValidationError("Siz heç bir departamentə aid deyilsiniz.")
-                if creator.department != assignee.department:
-                    raise PermissionDenied("Siz yalnız öz departamentinizdəki işçilərə tapşırıq verə bilərsiniz.")
-
-            task = serializer.save(created_by=creator, approved=False)
+        # Special handling for employee assignments - check department permissions
+        if assignee.role == "employee":
+            if not assignee.department:
+                raise ValidationError("The assigned employee does not belong to any department.")
             
-            # Bildiriş növünü təyin et: Manager və Lead-lər tapşırığı qəbul etməlidir
-            if assignee.role in ["manager", "department_lead"]:
-                send_task_notification_email(task, notification_type='assignment_acceptance_request')
-            else:
-                send_task_notification_email(task, notification_type='new_assignment')
-        else:
-            # İcazə yoxdursa
-            raise PermissionDenied("Bu istifadəçiyə tapşırıq təyin etmək üçün səlahiyyətiniz yoxdur.")
+            # For non-admin/top_management users, check department permissions
+            if creator.role not in ["admin", "top_management"]:
+                department = assignee.department
+                designated_creator = department.manager or department.lead
+                if not designated_creator:
+                    raise ValidationError(f"The department '{department.name}' has no assigned Manager or Lead.")
+                if creator != designated_creator:
+                    raise PermissionDenied(f"You are not the designated manager or lead for this employee's department.")
+
+        # Determine notification type and approval status
+        notification_type = 'new_assignment'
+        approved = False
+
+        # Tasks assigned to employees are typically approved immediately by their direct supervisors
+        if assignee.role == "employee" and creator.role in ["manager", "department_lead", "top_management", "admin"]:
+            approved = False  # Still needs approval from assignee's supervisor if self-created
+            notification_type = 'new_assignment'
+        # Tasks assigned to higher roles need acceptance
+        elif assignee.role in ["manager", "department_lead", "top_management"]:
+            approved = False
+            notification_type = 'assignment_acceptance_request'
+
+        task = serializer.save(created_by=creator, approved=approved)
+        send_task_notification_email(task, notification_type=notification_type)
+
 
 class TaskVerificationView(views.APIView):
-    # Bu hissədə dəyişiklik edilməyib
     permission_classes = [permissions.AllowAny] 
 
     def get(self, request, token, *args, **kwargs):
@@ -131,6 +153,7 @@ class TaskVerificationView(views.APIView):
         except Task.DoesNotExist:
             return Response({"detail": "Tapşırıq tapılmadı. Artıq silinmiş ola bilər."}, status=status.HTTP_404_NOT_FOUND)
 
+
 class AssignableUserListView(generics.ListAPIView):
     serializer_class = TaskUserSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -138,28 +161,38 @@ class AssignableUserListView(generics.ListAPIView):
     def get_queryset(self):
         user = self.request.user
 
-        user_level = ROLE_HIERARCHY.get(user.role, 0)
-        
-        # İstifadəçinin rolu iyerarxiyada yoxdursa, boş siyahı qaytar
-        if user_level == 0:
+        # Staff and admin can assign to anyone
+        if user.is_staff or user.role == 'admin':
+            return User.objects.filter(is_active=True).exclude(pk=user.pk)
+
+        role_hierarchy = ["admin", "top_management", "department_lead", "manager", "employee"]
+
+        try:
+            user_index = role_hierarchy.index(user.role)
+        except ValueError:
             return User.objects.none()
 
-        # İstifadəçinin səviyyəsindən daha aşağı səviyyədə olan bütün rolları tap
-        assignable_roles = [role for role, level in ROLE_HIERARCHY.items() if level < user_level]
-
+        # Get all roles that are lower in hierarchy (higher index)
+        assignable_roles = role_hierarchy[user_index+1:]
+        
         if not assignable_roles:
             return User.objects.none()
 
-        # Başlanğıc queryset: aktiv və daha aşağı rolda olan istifadəçilər
+        # Base queryset for assignable users
         queryset = User.objects.filter(
             role__in=assignable_roles,
             is_active=True
         ).exclude(pk=user.pk)
 
-        # Əgər tapşırıq verən manager və ya lead-dirsə, yalnız öz departamentindəki işçiləri göstər
-        if user.role in ["manager", "department_lead"]:
+        # For non-admin/top_management, apply department restrictions for employees
+        if user.role not in ["admin", "top_management"]:
             if not user.department:
                 return User.objects.none()
-            queryset = queryset.filter(department=user.department)
+            
+            # Can assign to employees in their department, and other roles regardless of department
+            queryset = queryset.filter(
+                Q(role="employee", department=user.department) |
+                Q(role__in=[role for role in assignable_roles if role != "employee"])
+            )
 
         return queryset.order_by("first_name", "last_name")
