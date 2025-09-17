@@ -31,10 +31,31 @@ class TaskViewSet(viewsets.ModelViewSet):
             Q(assignee=user) | Q(created_by=user)
         ).distinct().order_by('-created_at')
 
+    def _get_role_hierarchy_index(self, role):
+        """Get the index of a role in the hierarchy (lower index = higher role)"""
+        role_hierarchy = ["admin", "top_management", "department_lead", "manager", "employee"]
+        try:
+            return role_hierarchy.index(role)
+        except ValueError:
+            return -1
+
+    def _can_assign_to_role(self, creator_role, assignee_role):
+        """Check if creator role can assign tasks to assignee role"""
+        creator_index = self._get_role_hierarchy_index(creator_role)
+        assignee_index = self._get_role_hierarchy_index(assignee_role)
+        
+        # Invalid roles
+        if creator_index == -1 or assignee_index == -1:
+            return False
+            
+        # Higher roles (lower index) can assign to lower roles (higher index)
+        return creator_index < assignee_index
+
     def perform_create(self, serializer):
         creator = self.request.user
         assignee = serializer.validated_data["assignee"]
 
+        # Self-assignment case
         if creator == assignee:
             superior = creator.get_superior()
             if superior:
@@ -44,43 +65,47 @@ class TaskViewSet(viewsets.ModelViewSet):
                 serializer.save(created_by=creator, approved=True)
             return
 
+        # Check if creator can assign to assignee based on role hierarchy
+        if not self._can_assign_to_role(creator.role, assignee.role):
+            role_permissions = {
+                "employee": "Employees cannot assign tasks to other users.",
+                "manager": "Managers can only assign tasks to employees.",
+                "department_lead": "Department Leads can assign tasks to managers and employees.",
+                "top_management": "Top Management can assign tasks to department leads, managers, and employees.",
+                "admin": "Admins can assign tasks to all users."
+            }
+            error_message = role_permissions.get(creator.role, "You don't have permission to assign tasks to this user.")
+            raise PermissionDenied(error_message)
+
+        # Special handling for employee assignments - check department permissions
         if assignee.role == "employee":
             if not assignee.department:
                 raise ValidationError("The assigned employee does not belong to any department.")
-            department = assignee.department
-            designated_creator = department.manager or department.lead
-            if not designated_creator:
-                raise ValidationError(f"The department '{department.name}' has no assigned Manager or Lead.")
-            if creator != designated_creator:
-                 raise PermissionDenied(f"You are not the designated manager or lead for this employee's department.")
             
-            task = serializer.save(created_by=creator, approved=False)
-            send_task_notification_email(task, notification_type='new_assignment')
-            return
+            # For non-admin/top_management users, check department permissions
+            if creator.role not in ["admin", "top_management"]:
+                department = assignee.department
+                designated_creator = department.manager or department.lead
+                if not designated_creator:
+                    raise ValidationError(f"The department '{department.name}' has no assigned Manager or Lead.")
+                if creator != designated_creator:
+                    raise PermissionDenied(f"You are not the designated manager or lead for this employee's department.")
 
-        elif assignee.role == "manager":
-            if creator.role != "department_lead":
-                raise PermissionDenied("Only Department Leads can assign tasks to Managers.")
-            task = serializer.save(created_by=creator, approved=False)
-            send_task_notification_email(task, notification_type='assignment_acceptance_request')
-            return
+        # Determine notification type and approval status
+        notification_type = 'new_assignment'
+        approved = False
 
-        elif assignee.role == "department_lead":
-            if creator.role != "top_management":
-                raise PermissionDenied("Only Top Management can assign tasks to Department Leads.")
-            task = serializer.save(created_by=creator, approved=False)
-            send_task_notification_email(task, notification_type='assignment_acceptance_request')
-            return
-            
-        elif assignee.role == "top_management":
-            if creator.role != "department_lead":
-                 raise PermissionDenied("Only Department Leads can create tasks for Top Management.")
-        
-        elif assignee.role == "admin":
-            raise PermissionDenied("You cannot assign tasks to a user with the admin role.")
+        # Tasks assigned to employees are typically approved immediately by their direct supervisors
+        if assignee.role == "employee" and creator.role in ["manager", "department_lead", "top_management", "admin"]:
+            approved = False  # Still needs approval from assignee's supervisor if self-created
+            notification_type = 'new_assignment'
+        # Tasks assigned to higher roles need acceptance
+        elif assignee.role in ["manager", "department_lead", "top_management"]:
+            approved = False
+            notification_type = 'assignment_acceptance_request'
 
-        task = serializer.save(created_by=creator, approved=False)
-        send_task_notification_email(task, notification_type='new_assignment')
+        task = serializer.save(created_by=creator, approved=approved)
+        send_task_notification_email(task, notification_type=notification_type)
 
 
 class TaskVerificationView(views.APIView):
@@ -128,6 +153,7 @@ class TaskVerificationView(views.APIView):
         except Task.DoesNotExist:
             return Response({"detail": "Tapşırıq tapılmadı. Artıq silinmiş ola bilər."}, status=status.HTTP_404_NOT_FOUND)
 
+
 class AssignableUserListView(generics.ListAPIView):
     serializer_class = TaskUserSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -135,11 +161,9 @@ class AssignableUserListView(generics.ListAPIView):
     def get_queryset(self):
         user = self.request.user
 
+        # Staff and admin can assign to anyone
         if user.is_staff or user.role == 'admin':
             return User.objects.filter(is_active=True).exclude(pk=user.pk)
-
-        if not user.department:
-            return User.objects.none()
 
         role_hierarchy = ["admin", "top_management", "department_lead", "manager", "employee"]
 
@@ -148,10 +172,27 @@ class AssignableUserListView(generics.ListAPIView):
         except ValueError:
             return User.objects.none()
 
-        lower_roles = role_hierarchy[user_index+1:]
+        # Get all roles that are lower in hierarchy (higher index)
+        assignable_roles = role_hierarchy[user_index+1:]
+        
+        if not assignable_roles:
+            return User.objects.none()
 
-        return User.objects.filter(
-            department=user.department,
-            role__in=lower_roles,
+        # Base queryset for assignable users
+        queryset = User.objects.filter(
+            role__in=assignable_roles,
             is_active=True
-        ).exclude(pk=user.pk).order_by("first_name", "last_name")
+        ).exclude(pk=user.pk)
+
+        # For non-admin/top_management, apply department restrictions for employees
+        if user.role not in ["admin", "top_management"]:
+            if not user.department:
+                return User.objects.none()
+            
+            # Can assign to employees in their department, and other roles regardless of department
+            queryset = queryset.filter(
+                Q(role="employee", department=user.department) |
+                Q(role__in=[role for role in assignable_roles if role != "employee"])
+            )
+
+        return queryset.order_by("first_name", "last_name")
