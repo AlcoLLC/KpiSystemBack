@@ -131,51 +131,27 @@ class TaskVerificationView(views.APIView):
 class AssignableUserListView(generics.ListAPIView):
     serializer_class = TaskUserSerializer
     permission_classes = [permissions.IsAuthenticated]
-
+    
     def get_queryset(self):
-        """
-        Kullanıcıların görev atayabileceği kişileri listeler.
-        Kurallar:
-        1. Admin/staff her zaman herkese görev atayabilir.
-        2. Kullanıcılar yalnızca kendi departmanlarındaki kişilere görev atayabilir.
-        3. Kullanıcılar yalnızca hiyerarşide kendilerinden daha alt roldeki kişilere görev atayabilir.
-        """
         user = self.request.user
 
-        # Kural 1: Admin veya staff ise, aktif olan herkesi (kendisi hariç) listeleyin.
         if user.is_staff or user.role == 'admin':
-            return User.objects.filter(is_active=True).exclude(pk=user.pk).order_by('first_name', 'last_name')
+            return User.objects.filter(is_active=True).exclude(pk=user.pk)
 
-        # Kullanıcının bir departmanı yoksa, kimseye görev atayamaz.
         if not user.department:
             return User.objects.none()
 
-        # Rol hiyerarşisini tanımlayalım (daha yüksek sayı, daha yüksek rütbe)
-        role_hierarchy = {
-            "top_management": 4,
-            "department_lead": 3,
-            "manager": 2,
-            "employee": 1,
-        }
+        role_hierarchy = ["admin", "top_management", "department_lead", "manager", "employee"]
 
-        # Mevcut kullanıcının rütbesini alalım.
-        user_rank = role_hierarchy.get(user.role)
-
-        # Eğer kullanıcının rütbesi tanımlı değilse veya en alttaysa (employee), kimseye atama yapamaz.
-        if not user_rank:
+        try:
+            user_index = role_hierarchy.index(user.role)
+        except ValueError:
             return User.objects.none()
 
-        # Mevcut kullanıcının rütbesinden daha düşük rütbeye sahip rolleri bulalım.
-        lower_roles = [role for role, rank in role_hierarchy.items() if rank < user_rank]
+        lower_roles = role_hierarchy[user_index+1:]
 
-        if not lower_roles:
-            return User.objects.none() # Atanacak daha alt bir rol yoksa boş liste döndür.
-
-        # Kural 2 & 3: Kullanıcının departmanındaki ve daha alt roldeki aktif kullanıcıları filtreleyelim.
-        assignable_users = User.objects.filter(
+        return User.objects.filter(
             department=user.department,
             role__in=lower_roles,
             is_active=True
-        ).exclude(pk=user.pk).distinct().order_by('first_name', 'last_name')
-
-        return assignable_users
+        ).exclude(pk=user.pk).order_by("first_name", "last_name")

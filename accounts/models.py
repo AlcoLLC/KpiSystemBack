@@ -73,3 +73,41 @@ class User(AbstractUser):
 
         else:
             return None
+        
+    def get_assignable_users(self):
+        """
+        Returns a queryset of users to whom this user can assign tasks based on 
+        role hierarchy and department rules.
+        """
+        # Admin/staff can assign to anyone active (except themselves).
+        if self.is_staff or self.role == 'admin':
+            return User.objects.filter(is_active=True).exclude(pk=self.pk)
+
+        # Top management can assign tasks to all department leads.
+        if self.role == "top_management":
+            return User.objects.filter(role="department_lead", is_active=True)
+        
+        # A user must be in a department to assign tasks (unless they are top management).
+        if not self.department:
+            return User.objects.none()
+
+        # Department leads can assign to managers and employees in their department.
+        if self.role == "department_lead":
+            if hasattr(self, 'led_department'):
+                return User.objects.filter(
+                    department=self.department,
+                    role__in=["manager", "employee"],
+                    is_active=True
+                )
+
+        # A manager can assign tasks only to employees in the department they officially manage.
+        if self.role == "manager":
+            if hasattr(self, 'managed_department') and self.managed_department:
+                return User.objects.filter(
+                    department=self.managed_department,
+                    role="employee",
+                    is_active=True
+                )
+        
+        # Employees or other roles cannot assign tasks.
+        return User.objects.none()
