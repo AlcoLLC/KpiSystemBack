@@ -1,19 +1,56 @@
 <!DOCTYPE html>
 <html>
-<body>
-    <p>Salam, {{ superior_name }},</p>
-    <p>
-        <b>{{ creator_name }}</b> tərəfindən <b>"{{ task.title }}"</b> adlı yeni bir tapşırıq yaradıldı və sizin təsdiqinizi gözləyir.
-    </p>
-    <p><b>Təsvir:</b> {{ task.description|default:"Təsvir yoxdur." }}</p>
-    <p>Lütfən aşağıdakı linklərə klikləyərək tapşırığı təsdiqləyin və ya rədd edin:</p>
-    <p>
-        <a href="{{ approve_url }}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block;">
-            Təsdiqlə
-        </a>
-        <a href="{{ reject_url }}" style="background-color: #f44336; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; margin-left: 10px;">
-            Rədd et
-        </a>
-    </p>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yeni Tapşırıq Təsdiqi</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+            <td style="padding: 20px 0;">
+                <table align="center" border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                    <tr>
+                        <td style="padding: 30px;">
+                            <h2 style="color: #333333; text-align: center; margin-top: 0; font-size: 24px;">Yeni Tapşırıq Təsdiqi</h2>
+                            <p style="color: #555555; font-size: 16px; margin: 20px 0;">Salam, {{ superior_name }},</p>
+                            <p style="color: #555555; font-size: 16px; line-height: 1.6;">
+                                <b>{{ creator_name }}</b> tərəfindən aşağıdakı yeni tapşırıq yaradıldı və sizin təsdiqinizi gözləyir.
+                            </p>
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f9f9f9; border-radius: 5px; margin: 20px 0; border-left: 4px solid #007bff;">
+                                <tr>
+                                    <td style="padding: 20px;">
+                                        <h3 style="margin-top: 0; margin-bottom: 10px; color: #333333; font-size: 18px;">{{ task.title }}</h3>
+                                        <p style="color: #555555; margin: 0;"><b>Təsvir:</b> {{ task.description|default:"Təsvir yoxdur." }}</p>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style="color: #555555; font-size: 16px;">Lütfən aşağıdakı düymələrə klikləyərək tapşırığı <b>təsdiqləyin</b> və ya <b>rədd edin</b>:</p>
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                <tr>
+                                    <td style="text-align: center; padding-top: 20px;">
+                                        <a href="{{ approve_url }}" style="background-color: #28a745; color: white; padding: 12px 25px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold; font-size: 16px;">
+                                            Təsdiqlə
+                                        </a>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;
+                                        <a href="{{ reject_url }}" style="background-color: #dc3545; color: white; padding: 12px 25px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold; font-size: 16px;">
+                                            Rədd et
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+                <table align="center" border="0" cellpadding="0" cellspacing="0" width="600">
+                    <tr>
+                        <td style="padding: 20px 0; text-align: center; color: #999999; font-size: 12px;">
+                           © 2025 Şirkətinizin Adı. Bütün hüquqlar qorunur.
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
 </body>
 </html>
