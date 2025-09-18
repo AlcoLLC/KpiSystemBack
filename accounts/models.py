@@ -39,7 +39,7 @@ class User(AbstractUser):
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True, 
-        related_name='employees'
+        related_name='managed_department'
     )
 
     def __str__(self):
