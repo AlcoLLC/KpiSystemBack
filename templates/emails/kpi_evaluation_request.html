@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>KPI Dəyərləndirmə Tələbi</title>
+</head>
+<body>
+    <p>Salam, {{ superior_name }},</p>
+    <p>
+        <b>{{ evaluatee_name }}</b> adlı işçi, <b>"{{ task.title }}"</b> adlı tapşırıq üçün öz KPI dəyərləndirməsini tamamladı və sizin dəyərləndirmənizi gözləyir.
+    </p>
+    
+    <hr>
+    
+    <h4>İşçinin Öz Dəyərləndirməsi:</h4>
+    <ul>
+        <li><b>Verdiyi Bal:</b> {{ self_score }}</li>
+        <li><b>Şərhi:</b> {{ self_comment|default:"Şərh yoxdur." }}</li>
+    </ul>
+
+    <hr>
+
+    <p>
+        Zəhmət olmasa, aşağıdakı linkə daxil olaraq öz dəyərləndirmənizi tamamlayın:
+    </p>
+    <p style="text-align: center;">
+        <a href="{{ evaluation_url }}" style="background-color: #4CAF50; color: white; padding: 14px 25px; text-align: center; text-decoration: none; display: inline-block;">
+            Dəyərləndirməyə Başla
+        </a>
+    </p>
+    <p>
+        Əgər düymə işləmirsə, bu linki brauzerinizə kopyalayın: <br>
+        <a href="{{ evaluation_url }}">{{ evaluation_url }}</a>
+    </p>
+    <br>
+    <p>Hörmətlə,</p>
+    <p>Sizin Sisteminiz</p>
+</body>
+</html>
