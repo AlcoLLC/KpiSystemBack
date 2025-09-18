@@ -14,7 +14,7 @@ def send_task_notification_email(task, notification_type):
     context = {}
     template_name = ""
 
-    site_url = getattr(settings, "SITE_URL", "http://127.0.0.1:8000")
+    site_url = getattr(settings, "SITE_URL", "http://91.99.112.51:100")
 
     if notification_type == 'new_assignment':
         recipient = task.assignee
