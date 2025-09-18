@@ -9,6 +9,7 @@ class Task(models.Model):
         ("TODO", _("Təsdiqlənib")),
         ("IN_PROGRESS", _("Davam edir")),
         ("DONE", _("Tamamlanıb")),
+        ("CANCELLED", _("Ləğv edilib")),
     ]
 
     PRIORITY_CHOICES = [

@@ -106,14 +106,14 @@ class TaskVerificationView(views.APIView):
                 return Response({"detail": "Tapşırıq uğurla qəbul edildi."}, status=status.HTTP_200_OK)
 
             elif action == 'reject':
-                title = task.title
-                task.delete()
-                return Response({"detail": f"'{title}' adlı tapşırıq rədd edildi və sistemdən silindi."}, status=status.HTTP_200_OK)
+                task.status = "CANCELLED"
+                task.save()
+                return Response({"detail": f"'{task.title}' adlı tapşırıq rədd edildi və statusu 'Ləğv edilib' olaraq dəyişdirildi."}, status=status.HTTP_200_OK)
             
             elif action == 'reject_assignment':
-                title = task.title
-                task.delete()
-                return Response({"detail": f"'{title}' adlı təyin edilmiş tapşırıq rədd edildi və sistemdən silindi."}, status=status.HTTP_200_OK)
+                task.status = "CANCELLED"
+                task.save()
+                return Response({"detail": f"'{task.title}' adlı təyin edilmiş tapşırıq rədd edildi və statusu 'Ləğv edilib' olaraq dəyişdirildi."}, status=status.HTTP_200_OK)
             
             else:
                 return Response({"detail": "Naməlum əməliyyat."}, status=status.HTTP_400_BAD_REQUEST)
