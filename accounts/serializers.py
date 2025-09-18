@@ -6,7 +6,7 @@ from rest_framework.validators import UniqueValidator
 class UserSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=True)
     role_display = serializers.CharField(source='get_role_display', read_only=True)
-    department_name = serializers.CharField(source='managed_department.name', read_only=True, allow_null=True)
+    department_name = serializers.CharField(source='department.name', read_only=True, allow_null=True)
     password = serializers.CharField(write_only=True, required=False)
 
     class Meta:
