@@ -39,48 +39,43 @@ class TaskViewSet(viewsets.ModelViewSet):
             superior = creator.get_superior()
             if superior:
                 task = serializer.save(created_by=creator, approved=False)
-                send_task_notification_email(task, notification_type='approval_request')
+                send_task_notification_email(task, notification_type="approval_request")
             else:
-                serializer.save(created_by=creator, approved=True)
+                task = serializer.save(created_by=creator, approved=True)
             return
 
-        if assignee.role == "employee":
-            if not assignee.department:
-                raise ValidationError("The assigned employee does not belong to any department.")
-            department = assignee.department
-            designated_creator = department.manager or department.lead
-            if not designated_creator:
-                raise ValidationError(f"The department '{department.name}' has no assigned Manager or Lead.")
-            if creator != designated_creator:
-                 raise PermissionDenied(f"You are not the designated manager or lead for this employee's department.")
-            
+        if creator.role == "admin":
+            if assignee.role == "admin":
+                raise PermissionDenied("You cannot assign tasks to another admin.")
             task = serializer.save(created_by=creator, approved=False)
-            send_task_notification_email(task, notification_type='new_assignment')
+            send_task_notification_email(task, notification_type="new_assignment")
             return
 
-        elif assignee.role == "manager":
-            if creator.role != "department_lead":
-                raise PermissionDenied("Only Department Leads can assign tasks to Managers.")
+        if creator.role == "top_management":
+            if assignee.role not in ["department_lead", "manager", "employee"]:
+                raise PermissionDenied("Top Management can only assign tasks to Department Leads, Managers, or Employees.")
             task = serializer.save(created_by=creator, approved=False)
-            send_task_notification_email(task, notification_type='assignment_acceptance_request')
+            send_task_notification_email(task, notification_type="new_assignment")
             return
 
-        elif assignee.role == "department_lead":
-            if creator.role != "top_management":
-                raise PermissionDenied("Only Top Management can assign tasks to Department Leads.")
+        if creator.role == "department_lead":
+            if assignee.role not in ["manager", "employee"]:
+                raise PermissionDenied("Department Leads can only assign tasks to Managers or Employees.")
             task = serializer.save(created_by=creator, approved=False)
-            send_task_notification_email(task, notification_type='assignment_acceptance_request')
+            send_task_notification_email(task, notification_type="new_assignment")
             return
-            
-        elif assignee.role == "top_management":
-            if creator.role != "department_lead":
-                 raise PermissionDenied("Only Department Leads can create tasks for Top Management.")
-        
-        elif assignee.role == "admin":
-            raise PermissionDenied("You cannot assign tasks to a user with the admin role.")
 
-        task = serializer.save(created_by=creator, approved=False)
-        send_task_notification_email(task, notification_type='new_assignment')
+        if creator.role == "manager":
+            if assignee.role != "employee":
+                raise PermissionDenied("Managers can only assign tasks to Employees.")
+            task = serializer.save(created_by=creator, approved=False)
+            send_task_notification_email(task, notification_type="new_assignment")
+            return
+
+        if creator.role == "employee":
+            raise PermissionDenied("Employees cannot assign tasks to others.")
+
+        raise PermissionDenied("You are not allowed to assign this task.")
 
 
 class TaskVerificationView(views.APIView):
