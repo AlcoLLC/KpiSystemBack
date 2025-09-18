@@ -26,6 +26,7 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
             "id", "task", "task_id",
             "evaluator", "evaluator_id",
             "evaluatee", "evaluatee_id",
-            "score", "comment", "created_at"
+            "score", "comment", "created_at",
+            "evaluation_type" 
         ]
-        read_only_fields = ["created_at"]
+        read_only_fields = ["created_at", "evaluation_type"] 
