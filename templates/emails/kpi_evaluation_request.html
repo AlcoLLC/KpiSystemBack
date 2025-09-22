@@ -1,52 +1,163 @@
+<!-- templates/emails/kpi_evaluation_request.html -->
 <!DOCTYPE html>
-<html>
+<html lang="az">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KPI Dəyərləndirmə Tələbi</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #3b82f6;
+            color: white;
+            padding: 20px;
+            border-radius: 8px 8px 0 0;
+            text-align: center;
+        }
+        .content {
+            background-color: #f8fafc;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+        }
+        .evaluation-info {
+            background-color: white;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #3b82f6;
+        }
+        .self-eval-info {
+            background-color: #dbeafe;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #60a5fa;
+        }
+        .score-display {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1e40af;
+            text-align: center;
+            padding: 10px;
+            background-color: #f1f5f9;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .comment-box {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 12px;
+            border-radius: 6px;
+            font-style: italic;
+            margin: 10px 0;
+        }
+        .cta-button {
+            background-color: #10b981;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            display: inline-block;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        .footer {
+            background-color: #1f2937;
+            color: white;
+            padding: 15px;
+            border-radius: 0 0 8px 8px;
+            text-align: center;
+            font-size: 12px;
+        }
+        .scale-note {
+            background-color: #fef3c7;
+            border: 1px solid #f59e0b;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+    </style>
 </head>
-<body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
+<body>
+    <div class="header">
+        <h1>🎯 KPI Dəyərləndirmə Tələbi</h1>
+        <p>Çalışanın performansını dəyərləndirin</p>
+    </div>
 
-    <div style="max-width: 600px; margin: auto; background: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 20px;">
-
-        <h2 style="color: #333; text-align: center; margin-bottom: 20px;">📊 KPI Dəyərləndirmə Tələbi</h2>
-
-        <p>Salam, <b>{{ superior_name }}</b>,</p>
-
-        <p>
-            <b>{{ evaluatee_name }}</b> adlı işçi, <b>"{{ task.title }}"</b> adlı tapşırıq üçün öz KPI dəyərləndirməsini tamamladı və sizin dəyərləndirmənizi gözləyir.
-        </p>
+    <div class="content">
+        <p><strong>Salam {{ superior_name }},</strong></p>
         
-        <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-
-        <h4 style="color: #4CAF50; margin-bottom: 10px;">✅ İşçinin Öz Dəyərləndirməsi:</h4>
-        <ul style="list-style: none; padding: 0;">
-            <li style="margin-bottom: 8px;"><b>Verdiyi Bal:</b> {{ self_score }}</li>
-            <li><b>Şərhi:</b> {{ self_comment|default:"Şərh yoxdur." }}</li>
-        </ul>
-
-        <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-
         <p>
-            Zəhmət olmasa, aşağıdakı linkə daxil olaraq öz dəyərləndirmənizi tamamlayın:
+            <strong>{{ evaluatee_name }}</strong> adlı işçi "<strong>{{ task.title }}</strong>" tapşırığı üçün 
+            öz değerlendirməsini tamamlamışdır və indi sizin üst dəyərləndirmənizi gözləyir.
         </p>
 
-        <div style="text-align: center; margin: 25px 0;">
-            <a href="{{ evaluation_url }}" 
-               style="background-color: #4CAF50; color: white; padding: 14px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
-                🔎 Dəyərləndirməyə Başla
+        <div class="evaluation-info">
+            <h3>📋 Tapşırıq Məlumatları</h3>
+            <p><strong>Tapşırıq:</strong> {{ task.title }}</p>
+            {% if task.description %}
+            <p><strong>Açıqlama:</strong> {{ task.description }}</p>
+            {% endif %}
+            <p><strong>İşçi:</strong> {{ evaluatee_name }}</p>
+            <p><strong>Status:</strong> Tamamlandı ✅</p>
+        </div>
+
+        {% if self_score %}
+        <div class="self-eval-info">
+            <h3>👤 İşçinin Öz Değerlendirməsi</h3>
+            <div class="score-display">
+                {{ self_score }}/10
+            </div>
+            <p style="text-align: center; color: #1e40af; font-weight: 600;">
+                (Öz değerlendirme skoru: 1-10 arası)
+            </p>
+            
+            {% if self_comment %}
+            <p><strong>İşçinin şərhi:</strong></p>
+            <div class="comment-box">
+                {{ self_comment }}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <div class="scale-note">
+            <strong>⚡ Diqqət:</strong> Sizin verəcəyiniz qiymət <strong>1-100 arası</strong> skalada olmalıdır 
+            və bu <strong>final skor</strong> kimi sayılacaq. İşçinin öz değerlendirməsi yalnız istinad üçün göstərilmişdir.
+        </div>
+
+        <div style="text-align: center;">
+            <a href="{{ evaluation_url }}" class="cta-button">
+                🎯 İndi Qiymətləndirin (1-100)
             </a>
         </div>
 
-        <p style="font-size: 14px; color: #555;">
-            Əgər düymə işləmirsə, bu linki brauzerinizə kopyalayın: <br>
-            <a href="{{ evaluation_url }}" style="color: #4CAF50;">{{ evaluation_url }}</a>
-        </p>
+        <p>Dəyərləndirmənizi tamamlamaq üçün yuxarıdakı düyməyə klikləyin və ya aşağıdakı linki istifadə edin:</p>
+        <p><a href="{{ evaluation_url }}">{{ evaluation_url }}</a></p>
 
-        <br>
-        <p style="color: #333; font-weight: bold;">Hörmətlə,</p>
-        <p style="color: #777;">Sizin Sisteminiz</p>
+        <div style="margin-top: 30px; padding: 15px; background-color: #e0f2fe; border-radius: 6px;">
+            <h4 style="color: #0277bd; margin-top: 0;">📊 Qiymətləndirmə Qaydaları</h4>
+            <ul style="margin: 10px 0; padding-left: 20px;">
+                <li><strong>1-30:</strong> Performans təkmilləşdirilməlidir</li>
+                <li><strong>31-60:</strong> Orta səviyyədə performans</li>
+                <li><strong>61-80:</strong> Yaxşı performans</li>
+                <li><strong>81-100:</strong> Əla performans</li>
+            </ul>
+        </div>
 
     </div>
 
+    <div class="footer">
+        <p>Bu email avtomatik olaraq KPI İdarəetmə Sistemi tərəfindən göndərilmişdir.</p>
+        <p>© 2024 KPI Sistemi - Performans İzləmə Platforması</p>
+    </div>
 </body>
 </html>
