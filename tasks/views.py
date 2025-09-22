@@ -22,65 +22,62 @@ class TaskViewSet(viewsets.ModelViewSet):
     filterset_class = TaskFilter 
     pagination_class = CustomPageNumberPagination
 
-    # TaskViewSet içərisindəki get_queryset metodunu bununla əvəz edin
-
     def get_queryset(self):
         """
         İstifadəçinin roluna görə görə biləcəyi tapşırıqları iyerarxiyaya uyğun filterləyir.
         """
         user = self.request.user
 
-        # 1. Admin və ya Staff bütün tapşırıqları görür
-        if user.is_staff or user.role == "admin":
+        # 1. Admin və  Staff bütün tapşırıqları görür
+        if user.is_staff and user.role == "admin":
             queryset = Task.objects.all()
 
-        # 2. Top Management bütün departament rəhbərlərini, menecerləri və işçiləri görür
+        # 2. Top Management həm öz, həm də tabeliyində olanların tapşırıqlarını görür
         elif user.role == 'top_management':
             queryset = Task.objects.filter(
-                assignee__role__in=['department_lead', 'manager', 'employee']
+                Q(assignee=user) | 
+                Q(assignee__role__in=['department_lead', 'manager', 'employee'])
             )
 
         # 3. Departament rəhbəri öz departamentindəki bütün işçiləri görür
         elif user.role == 'department_lead':
             try:
-                # Rəhbərin idarə etdiyi departamentləri tap (birdən çox ola bilər)
                 user_departments = Department.objects.filter(lead=user)
                 if user_departments.exists():
-                    # Həmin departamentlərdəki bütün tapşırıqları qaytar
-                    queryset = Task.objects.filter(assignee__department__in=user_departments)
+                    # Həm öz departamentindəkiləri, həm də özünə aid olanları görür
+                    queryset = Task.objects.filter(
+                        Q(assignee__department__in=user_departments) | 
+                        Q(assignee=user)
+                    )
                 else:
-                    # Heç bir departamentə rəhbərlik etmirsə, yalnız öz tapşırıqları
                     queryset = Task.objects.filter(assignee=user)
             except Exception:
                 queryset = Task.objects.filter(assignee=user)
 
-        # 4. Menecer öz departamentindəki 'employee' rolundakı işçiləri görür
+        # 4. Menecer öz departamentindəki 'employee' rolundakı işçiləri və öz tapşırıqlarını görür
         elif user.role == 'manager':
             if user.department:
                 queryset = Task.objects.filter(
-                    assignee__department=user.department, 
-                    assignee__role='employee'
+                    Q(assignee__department=user.department, assignee__role='employee') |
+                    Q(assignee=user)
                 )
             else:
-                # Menecer departamentə bağlı deyilsə, yalnız öz tapşırıqları
                 queryset = Task.objects.filter(assignee=user)
 
         # 5. İşçi (Employee) yalnız özünə təyin edilmiş tapşırıqları görür
         elif user.role == 'employee':
             queryset = Task.objects.filter(assignee=user)
         
-        # Heç bir şərtə uyğun gəlməzsə, təhlükəsizlik üçün boş siyahı
         else:
             queryset = Task.objects.none()
 
-        # Frontend-dən gələn "exclude_assignee" parametrini emal et (Məsələ 1-in həlli üçün)
+        # Frontend-dən gələn "exclude_assignee" parametrini emal et
         exclude_user_id = self.request.query_params.get('exclude_assignee')
         if exclude_user_id:
             try:
-                # Həmin ID-li istifadəçiyə təyin olunmuş tapşırıqları nəticələrdən çıxar
                 queryset = queryset.exclude(assignee__id=int(exclude_user_id))
             except (ValueError, TypeError):
-                pass  # Səhv ID formatı varsa heçnə etmə
+                pass
 
         return queryset.distinct().order_by('-created_at')
 
