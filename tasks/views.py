@@ -68,13 +68,6 @@ class TaskViewSet(viewsets.ModelViewSet):
         else:
             queryset = Task.objects.none()
 
-        exclude_user_id = self.request.query_params.get('exclude_assignee')
-        if exclude_user_id:
-            try:
-                queryset = queryset.exclude(assignee__id=int(exclude_user_id))
-            except (ValueError, TypeError):
-                pass
-
         return queryset.distinct().order_by('-created_at')
 
     def perform_create(self, serializer):
