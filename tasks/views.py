@@ -28,7 +28,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         """
         user = self.request.user
 
-        if user.is_staff or user.role == "admin":
+        if user.is_staff and user.role == "admin":
             queryset = Task.objects.all()
 
         elif user.role == 'top_management':
