@@ -1,4 +1,3 @@
-# models.py
 from django.db import models
 from django.conf import settings
 from tasks.models import Task
@@ -16,7 +15,6 @@ class KPIEvaluation(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="received_kpis"
     )
     
-    # Yeni alanlar - Skorları ayrı tutmaq üçün
     self_score = models.PositiveIntegerField(
         null=True, 
         blank=True,
@@ -28,7 +26,6 @@ class KPIEvaluation(models.Model):
         help_text="Üst rəhbərin verdiyi skor (1-100 arası)"
     )
     
-    # Əsas skor - üst rəhbərin verdiyi skor sayılır
     final_score = models.PositiveIntegerField(
         null=True,
         blank=True,
@@ -39,7 +36,6 @@ class KPIEvaluation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # Evaluation type
     evaluation_type = models.CharField(
         max_length=10,
         choices=EvaluationType.choices,
@@ -50,7 +46,6 @@ class KPIEvaluation(models.Model):
         unique_together = ("task", "evaluator", "evaluatee", "evaluation_type")
 
     def save(self, *args, **kwargs):
-        # Final score hesaplama
         if self.evaluation_type == self.EvaluationType.SUPERIOR_EVALUATION and self.superior_score:
             self.final_score = self.superior_score
         super().save(*args, **kwargs)
