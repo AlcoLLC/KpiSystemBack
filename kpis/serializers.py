@@ -8,7 +8,10 @@ from tasks.serializers import TaskSerializer
 class KPIEvaluationSerializer(serializers.ModelSerializer):
     evaluator = UserSerializer(read_only=True)
     evaluator_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), source="evaluator", write_only=True, required=False
+        queryset=User.objects.all(), 
+        source="evaluator", 
+        write_only=True, 
+        required=False
     )
     evaluatee = UserSerializer(read_only=True)
     evaluatee_id = serializers.PrimaryKeyRelatedField(
@@ -29,4 +32,4 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
             "score", "comment", "created_at",
             "evaluation_type" 
         ]
-        read_only_fields = ["created_at", "evaluation_type"] 
+        read_only_fields = ["created_at", "evaluation_type"]

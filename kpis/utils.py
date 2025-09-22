@@ -1,5 +1,3 @@
-# kpi/utils.py (Yeni dosya veya mevcut mail fonksiyonunun olduğu yer)
-
 import logging
 from django.conf import settings
 from django.core.mail import send_mail
@@ -9,9 +7,6 @@ from django.core.signing import Signer
 
 logger = logging.getLogger(__name__)
 
-# Mevcut mail gönderme fonksiyonunuzu buraya taşıyıp genişletin
-# Veya import edip yeni bir fonksiyon yazın.
-# Burada yeni bir fonksiyon olarak yazıyorum:
 
 def send_kpi_evaluation_request_email(kpi_evaluation):
     """
