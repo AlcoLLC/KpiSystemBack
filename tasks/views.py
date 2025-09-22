@@ -24,7 +24,7 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff or user.role == "admin":
+        if user.is_staff and user.role == "admin":
             return Task.objects.all().order_by('-created_at')
         
         return Task.objects.filter(

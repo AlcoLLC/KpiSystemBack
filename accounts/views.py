@@ -58,34 +58,3 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user
     
-class AssignableUserListView(generics.ListAPIView):
-    serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-        
-        if user.is_staff:
-            return User.objects.filter(is_active=True).order_by('username')
-
-        assignable_users = User.objects.none()
-
-        assignable_users |= User.objects.filter(pk=user.pk)
-
-        if user.role == "top_management":
-            assignable_users |= User.objects.filter(role="department_lead")
-
-        elif user.role == "department_lead":
-            user_departments = Department.objects.filter(lead=user)
-            if user_departments.exists():
-                assignable_users |= User.objects.filter(
-                    Q(department__in=user_departments, role="manager") |
-                    Q(department__in=user_departments, role="employee")
-                )
-
-        elif user.role == "manager":
-            user_department = user.department
-            if user_department:
-                assignable_users |= User.objects.filter(department=user_department, role="employee")
-        
-        return assignable_users.distinct().order_by('username')
