@@ -1,90 +1,168 @@
-from rest_framework import viewsets, status
+import logging
+from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django.shortcuts import get_object_or_404
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from django.db.models import Q
 from .models import KPIEvaluation
 from .serializers import KPIEvaluationSerializer
 from .utils import send_kpi_evaluation_request_email
-import logging
+from accounts.models import User
+from tasks.models import Task
+from tasks.serializers import TaskSerializer
 
 logger = logging.getLogger(__name__)
 
 class KPIEvaluationViewSet(viewsets.ModelViewSet):
     queryset = KPIEvaluation.objects.all()
     serializer_class = KPIEvaluationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Kullanıcının sadece kendi değerlendirmelerini görmesini sağla
+        user = self.request.user
+        
+        if user.role == 'admin':
+            return KPIEvaluation.objects.all().select_related('task', 'evaluator', 'evaluatee')
+        
         return KPIEvaluation.objects.filter(
-            models.Q(evaluator=self.request.user) | 
-            models.Q(evaluatee=self.request.user)
-        )
+            Q(evaluator=user) | Q(evaluatee=user)
+        ).select_related('task', 'evaluator', 'evaluatee')
 
-    @action(detail=False, methods=['post'])
-    def self_evaluate(self, request):
-        """Kullanıcının kendi kendini değerlendirmesi"""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        # Evaluator ve evaluatee'yi aynı user olarak set et
-        serializer.validated_data['evaluator'] = request.user
-        serializer.validated_data['evaluatee'] = request.user
-        serializer.validated_data['evaluation_type'] = KPIEvaluation.EvaluationType.SELF_EVALUATION
-        
-        evaluation = serializer.save()
-        
-        # Üst role e-posta gönder
-        try:
-            send_kpi_evaluation_request_email(evaluation)
-            logger.info(f"Self evaluation completed and email sent for evaluation ID: {evaluation.id}")
-        except Exception as e:
-            logger.error(f"Email sending failed for evaluation ID: {evaluation.id}: {str(e)}")
-            
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    def perform_create(self, serializer):
+        evaluator = self.request.user
+        evaluatee = serializer.validated_data["evaluatee"]
+        task = serializer.validated_data["task"]
 
-    @action(detail=True, methods=['post'])
-    def superior_evaluate(self, request, pk=None):
-        """Üst rolün değerlendirmesi"""
-        evaluation = get_object_or_404(KPIEvaluation, pk=pk)
-        
-        # Sadece üst rol değerlendirme yapabilir
-        superior = evaluation.evaluatee.get_superior()
-        if not superior or superior != request.user:
-            return Response(
-                {"error": "Bu değerlendirmeyi sadece ilgili kullanıcının üst rolü yapabilir."},
-                status=status.HTTP_403_FORBIDDEN
+        # Öz-qiymətləndirmə
+        if evaluator == evaluatee:
+            if KPIEvaluation.objects.filter(
+                task=task, 
+                evaluatee=evaluatee, 
+                evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+            ).exists():
+                raise ValidationError("Bu tapşırıq üçün artıq öz dəyərləndirmənizi etmisiniz.")
+
+            instance = serializer.save(
+                evaluator=evaluator, 
+                evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION,
+                score=None 
             )
-        
-        # Superior evaluation olarak güncelle
-        data = request.data.copy()
-        data['evaluation_type'] = KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
-        
-        serializer = self.get_serializer(evaluation, data=data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        updated_evaluation = serializer.save()
-        
-        logger.info(f"Superior evaluation completed for evaluation ID: {evaluation.id}")
-        
-        return Response(serializer.data, status=status.HTTP_200_OK)
+            
+            try:
+                send_kpi_evaluation_request_email(instance)
+            except Exception as e:
+                logger.error(f"Email göndəriləmədi: {str(e)}")
 
-    @action(detail=False, methods=['get'])
-    def pending_evaluations(self, request):
-        """Üst rolün bekleyen değerlendirmeleri"""
-        # Bu kullanıcının astı olan kişilerin bekleyen değerlendirmeleri
-        pending = KPIEvaluation.objects.filter(
-            evaluatee__superior=request.user,
-            is_superior_evaluated=False,
-            self_evaluation_score__isnull=False  # Self evaluation tamamlanmış olanlar
-        )
-        
-        serializer = self.get_serializer(pending, many=True)
-        return Response(serializer.data)
+        # Rəhbər qiymətləndirməsi
+        else:
+            ROLE_HIERARCHY = {
+                "employee": 1, "manager": 2, "department_lead": 3,
+                "top_management": 4, "admin": 5
+            }
+            evaluator_level = ROLE_HIERARCHY.get(evaluator.role, 0)
+            evaluatee_level = ROLE_HIERARCHY.get(evaluatee.role, 0)
+
+            if evaluator_level <= evaluatee_level and evaluator.role != 'admin':
+                raise PermissionDenied("Yalnız özünüzdən aşağı rolda olan işçiləri dəyərləndirə bilərsiniz.")
+
+            if evaluator.role != 'admin':
+                if not KPIEvaluation.objects.filter(
+                    task=task,
+                    evaluatee=evaluatee,
+                    evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+                ).exists():
+                    raise ValidationError("Bu dəyərləndirməni etməzdən əvvəl işçi öz dəyərləndirməsini tamamlamalıdır.")
+
+            if KPIEvaluation.objects.filter(
+                task=task, 
+                evaluator=evaluator, 
+                evaluatee=evaluatee, 
+                evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+            ).exists():
+                raise ValidationError("Bu işçini bu tapşırıq üçün artıq dəyərləndirmisiniz.")
+
+            serializer.save(
+                evaluator=evaluator,
+                evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION,
+                self_score=None
+            )
 
     @action(detail=False, methods=['get'])
     def my_evaluations(self, request):
-        """Kullanıcının kendi değerlendirmeleri"""
-        evaluations = KPIEvaluation.objects.filter(evaluatee=request.user)
-        serializer = self.get_serializer(evaluations, many=True)
-        return Response(serializer.data)
+        user = request.user
+        
+        given_evaluations = self.get_queryset().filter(evaluator=user)
+        received_evaluations = self.get_queryset().filter(evaluatee=user)
+        
+        return Response({
+            'given': KPIEvaluationSerializer(given_evaluations, many=True).data,
+            'received': KPIEvaluationSerializer(received_evaluations, many=True).data
+        })
+
+    @action(detail=False, methods=['get'])
+    def pending_evaluations(self, request):
+        user = request.user
+        
+        completed_tasks = Task.objects.filter(
+            status='DONE'
+        ).select_related('assigned_to')
+        
+        pending = []
+        
+        for task in completed_tasks:
+            can_evaluate = False
+            evaluation_type = None
+            
+            if task.assigned_to == user:
+                if not KPIEvaluation.objects.filter(
+                    task=task,
+                    evaluatee=user,
+                    evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+                ).exists():
+                    can_evaluate = True
+                    evaluation_type = 'SELF'
+            
+            else:
+                ROLE_HIERARCHY = {
+                    "employee": 1, "manager": 2, "department_lead": 3,
+                    "top_management": 4, "admin": 5
+                }
+                
+                user_level = ROLE_HIERARCHY.get(user.role, 0)
+                assignee_level = ROLE_HIERARCHY.get(task.assigned_to.role if task.assigned_to else 0, 0)
+                
+                if user_level > assignee_level or user.role == 'admin':
+                    has_self_eval = KPIEvaluation.objects.filter(
+                        task=task,
+                        evaluatee=task.assigned_to,
+                        evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+                    ).exists()
+                    
+                    has_superior_eval = KPIEvaluation.objects.filter(
+                        task=task,
+                        evaluator=user,
+                        evaluatee=task.assigned_to,
+                        evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+                    ).exists()
+                    
+                    if (has_self_eval or user.role == 'admin') and not has_superior_eval:
+                        can_evaluate = True
+                        evaluation_type = 'SUPERIOR'
+            
+            if can_evaluate:
+                pending.append({
+                    'task': TaskSerializer(task).data,
+                    'evaluation_type': evaluation_type
+                })
+        
+        return Response(pending)
+
+    @action(detail=False, methods=['get'])
+    def task_evaluations(self, request):
+        task_id = request.query_params.get('task_id')
+        if not task_id:
+            return Response({'error': 'task_id parametri tələb olunur'}, 
+                            status=status.HTTP_400_BAD_REQUEST)
+        
+        evaluations = self.get_queryset().filter(task_id=task_id)
+        return Response(KPIEvaluationSerializer(evaluations, many=True).data)
