@@ -1,38 +1,52 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>KPI Dəyərləndirmə Tələbi</title>
 </head>
-<body>
-    <p>Salam, {{ superior_name }},</p>
-    <p>
-        <b>{{ evaluatee_name }}</b> adlı işçi, <b>"{{ task.title }}"</b> adlı tapşırıq üçün öz KPI dəyərləndirməsini tamamladı və sizin dəyərləndirmənizi gözləyir.
-    </p>
-    
-    <hr>
-    
-    <h4>İşçinin Öz Dəyərləndirməsi:</h4>
-    <ul>
-        <li><b>Verdiyi Bal:</b> {{ self_score }}</li>
-        <li><b>Şərhi:</b> {{ self_comment|default:"Şərh yoxdur." }}</li>
-    </ul>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
 
-    <hr>
+    <div style="max-width: 600px; margin: auto; background: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 20px;">
 
-    <p>
-        Zəhmət olmasa, aşağıdakı linkə daxil olaraq öz dəyərləndirmənizi tamamlayın:
-    </p>
-    <p style="text-align: center;">
-        <a href="{{ evaluation_url }}" style="background-color: #4CAF50; color: white; padding: 14px 25px; text-align: center; text-decoration: none; display: inline-block;">
-            Dəyərləndirməyə Başla
-        </a>
-    </p>
-    <p>
-        Əgər düymə işləmirsə, bu linki brauzerinizə kopyalayın: <br>
-        <a href="{{ evaluation_url }}">{{ evaluation_url }}</a>
-    </p>
-    <br>
-    <p>Hörmətlə,</p>
-    <p>Sizin Sisteminiz</p>
+        <h2 style="color: #333; text-align: center; margin-bottom: 20px;">📊 KPI Dəyərləndirmə Tələbi</h2>
+
+        <p>Salam, <b>{{ superior_name }}</b>,</p>
+
+        <p>
+            <b>{{ evaluatee_name }}</b> adlı işçi, <b>"{{ task.title }}"</b> adlı tapşırıq üçün öz KPI dəyərləndirməsini tamamladı və sizin dəyərləndirmənizi gözləyir.
+        </p>
+        
+        <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+
+        <h4 style="color: #4CAF50; margin-bottom: 10px;">✅ İşçinin Öz Dəyərləndirməsi:</h4>
+        <ul style="list-style: none; padding: 0;">
+            <li style="margin-bottom: 8px;"><b>Verdiyi Bal:</b> {{ self_score }}</li>
+            <li><b>Şərhi:</b> {{ self_comment|default:"Şərh yoxdur." }}</li>
+        </ul>
+
+        <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+
+        <p>
+            Zəhmət olmasa, aşağıdakı linkə daxil olaraq öz dəyərləndirmənizi tamamlayın:
+        </p>
+
+        <div style="text-align: center; margin: 25px 0;">
+            <a href="{{ evaluation_url }}" 
+               style="background-color: #4CAF50; color: white; padding: 14px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                🔎 Dəyərləndirməyə Başla
+            </a>
+        </div>
+
+        <p style="font-size: 14px; color: #555;">
+            Əgər düymə işləmirsə, bu linki brauzerinizə kopyalayın: <br>
+            <a href="{{ evaluation_url }}" style="color: #4CAF50;">{{ evaluation_url }}</a>
+        </p>
+
+        <br>
+        <p style="color: #333; font-weight: bold;">Hörmətlə,</p>
+        <p style="color: #777;">Sizin Sisteminiz</p>
+
+    </div>
+
 </body>
 </html>

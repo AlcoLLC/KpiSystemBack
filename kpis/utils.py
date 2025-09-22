@@ -19,7 +19,7 @@ def send_kpi_evaluation_request_email(kpi_evaluation):
     """
     evaluatee = kpi_evaluation.evaluatee
     task = kpi_evaluation.task
-    superior = evaluatee.get_superior() # User modelinizde get_superior() metodu olmalı
+    superior = evaluatee.get_superior()
 
     if not superior:
         logger.warning(f"ID {evaluatee.id} olan istifadəçinin rəhbəri tapılmadı. KPI e-poçtu göndərilmədi.")
@@ -31,7 +31,7 @@ def send_kpi_evaluation_request_email(kpi_evaluation):
 
     site_url = getattr(settings, "FRONTEND_URL", "http://91.99.112.51/kpi_system") 
 
-    evaluation_url = f"{site_url}/kpi-deyerlendirme/{task.id}/{evaluatee.id}/"
+    evaluation_url = f"{site_url}/"
 
     subject = f"KPI Dəyərləndirmə Tələbi: {evaluatee.get_full_name()} - {task.title}"
     template_name = 'emails/kpi_evaluation_request.html'
