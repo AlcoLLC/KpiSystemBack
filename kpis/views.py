@@ -1,4 +1,4 @@
-import logging
+# views.py
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,10 +8,6 @@ from .models import KPIEvaluation
 from .serializers import KPIEvaluationSerializer
 from .utils import send_kpi_evaluation_request_email
 from accounts.models import User
-from tasks.models import Task
-from tasks.serializers import TaskSerializer
-
-logger = logging.getLogger(__name__)
 
 class KPIEvaluationViewSet(viewsets.ModelViewSet):
     queryset = KPIEvaluation.objects.all()
@@ -33,8 +29,8 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         evaluatee = serializer.validated_data["evaluatee"]
         task = serializer.validated_data["task"]
 
-        # Öz-qiymətləndirmə
         if evaluator == evaluatee:
+            # Öz değerlendirme
             if KPIEvaluation.objects.filter(
                 task=task, 
                 evaluatee=evaluatee, 
@@ -44,27 +40,34 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
             instance = serializer.save(
                 evaluator=evaluator, 
-                evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION,
-                score=None 
+                evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
             )
             
+            # E-poçt göndər
             try:
                 send_kpi_evaluation_request_email(instance)
             except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
                 logger.error(f"Email göndəriləmədi: {str(e)}")
 
-        # Rəhbər qiymətləndirməsi
         else:
+            # Üst değerlendirmesi
             ROLE_HIERARCHY = {
-                "employee": 1, "manager": 2, "department_lead": 3,
-                "top_management": 4, "admin": 5
+                "employee": 1,
+                "manager": 2,
+                "department_lead": 3,
+                "top_management": 4,
+                "admin": 5
             }
+
             evaluator_level = ROLE_HIERARCHY.get(evaluator.role, 0)
             evaluatee_level = ROLE_HIERARCHY.get(evaluatee.role, 0)
 
             if evaluator_level <= evaluatee_level and evaluator.role != 'admin':
                 raise PermissionDenied("Yalnız özünüzdən aşağı rolda olan işçiləri dəyərləndirə bilərsiniz.")
 
+            # Admin deyilsə, əvvəlcə öz değerlendirmesi olmalıdır
             if evaluator.role != 'admin':
                 if not KPIEvaluation.objects.filter(
                     task=task,
@@ -81,10 +84,9 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             ).exists():
                 raise ValidationError("Bu işçini bu tapşırıq üçün artıq dəyərləndirmisiniz.")
 
-            serializer.save(
+            instance = serializer.save(
                 evaluator=evaluator,
-                evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION,
-                self_score=None
+                evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
             )
 
     @action(detail=False, methods=['get'])
@@ -101,6 +103,8 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def pending_evaluations(self, request):
+        from tasks.models import Task
+        
         user = request.user
         
         completed_tasks = Task.objects.filter(
@@ -114,6 +118,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             evaluation_type = None
             
             if task.assigned_to == user:
+                # Öz değerlendirmesi
                 if not KPIEvaluation.objects.filter(
                     task=task,
                     evaluatee=user,
@@ -123,9 +128,13 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                     evaluation_type = 'SELF'
             
             else:
+                # Üst değerlendirmesi
                 ROLE_HIERARCHY = {
-                    "employee": 1, "manager": 2, "department_lead": 3,
-                    "top_management": 4, "admin": 5
+                    "employee": 1,
+                    "manager": 2,
+                    "department_lead": 3,
+                    "top_management": 4,
+                    "admin": 5
                 }
                 
                 user_level = ROLE_HIERARCHY.get(user.role, 0)
@@ -150,6 +159,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                         evaluation_type = 'SUPERIOR'
             
             if can_evaluate:
+                from tasks.serializers import TaskSerializer
                 pending.append({
                     'task': TaskSerializer(task).data,
                     'evaluation_type': evaluation_type
@@ -162,7 +172,42 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         task_id = request.query_params.get('task_id')
         if not task_id:
             return Response({'error': 'task_id parametri tələb olunur'}, 
-                            status=status.HTTP_400_BAD_REQUEST)
+                          status=status.HTTP_400_BAD_REQUEST)
         
         evaluations = self.get_queryset().filter(task_id=task_id)
         return Response(KPIEvaluationSerializer(evaluations, many=True).data)
+
+    @action(detail=False, methods=['get'])
+    def evaluation_summary(self, request):
+        """Bir tapşırığın bütün değerlendirmelerini birleştir"""
+        task_id = request.query_params.get('task_id')
+        evaluatee_id = request.query_params.get('evaluatee_id')
+        
+        if not task_id or not evaluatee_id:
+            return Response({
+                'error': 'task_id və evaluatee_id parametrləri tələb olunur'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        evaluations = KPIEvaluation.objects.filter(
+            task_id=task_id,
+            evaluatee_id=evaluatee_id
+        ).select_related('task', 'evaluator', 'evaluatee')
+        
+        self_evaluation = evaluations.filter(
+            evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+        ).first()
+        
+        superior_evaluation = evaluations.filter(
+            evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+        ).first()
+        
+        summary = {
+            'task_id': task_id,
+            'evaluatee_id': evaluatee_id,
+            'self_evaluation': KPIEvaluationSerializer(self_evaluation).data if self_evaluation else None,
+            'superior_evaluation': KPIEvaluationSerializer(superior_evaluation).data if superior_evaluation else None,
+            'final_score': superior_evaluation.final_score if superior_evaluation else None,
+            'is_complete': bool(self_evaluation and superior_evaluation)
+        }
+        
+        return Response(summary)
