@@ -1,75 +1,37 @@
 from rest_framework import serializers
 from .models import KPIEvaluation
 from accounts.models import User
-from accounts.serializers import UserSerializer
-from tasks.models import Task
-from tasks.serializers import TaskSerializer
 
 class KPIEvaluationSerializer(serializers.ModelSerializer):
-    evaluator = UserSerializer(read_only=True)
-    evaluator_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), 
-        source="evaluator", 
-        write_only=True, 
-        required=False
-    )
-    evaluatee = UserSerializer(read_only=True)
-    evaluatee_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), source="evaluatee", write_only=True
-    )
-
-    task = TaskSerializer(read_only=True)
-    task_id = serializers.PrimaryKeyRelatedField(
-        queryset=Task.objects.all(), source="task", write_only=True
-    )
-    
-    temp_score = serializers.IntegerField(write_only=True, required=False)
-    final_score = serializers.SerializerMethodField()
+    evaluator_info = serializers.StringRelatedField(source='evaluator', read_only=True)
+    evaluatee_info = serializers.StringRelatedField(source='evaluatee', read_only=True)
+    task_info = serializers.StringRelatedField(source='task', read_only=True)
 
     class Meta:
         model = KPIEvaluation
         fields = [
-            "id", "task", "task_id",
-            "evaluator", "evaluator_id",
-            "evaluatee", "evaluatee_id",
-            "score", "self_evaluation_score", "temp_score", "final_score",
-            "comment", "created_at", "updated_at",
-            "evaluation_type", "is_superior_evaluated"
+            'id', 'task', 'evaluator', 'evaluatee', 'score', 'self_score', 
+            'comment', 'created_at', 'evaluation_type',
+            'evaluator_info', 'evaluatee_info', 'task_info'
         ]
-        read_only_fields = ["created_at", "updated_at", "is_superior_evaluated"]
+        read_only_fields = ['evaluator', 'evaluation_type']
 
-    def get_final_score(self, obj):
-        return obj.get_final_score()
-
-    def create(self, validated_data):
-        temp_score = validated_data.pop('temp_score', None)
-        evaluation_type = validated_data.get('evaluation_type')
+    def validate(self, data):
+        evaluator = self.context['request'].user
+        evaluatee = data.get('evaluatee')
         
-        if evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION and temp_score:
-            instance = KPIEvaluation(**validated_data)
-            instance._temp_score = temp_score
-            instance.save()
-            return instance
+        # Öz-qiymətləndirmə
+        if evaluator == evaluatee:
+            if 'self_score' not in self.initial_data or self.initial_data.get('self_score') is None:
+                raise serializers.ValidationError("Öz dəyərləndirməniz üçün 'self_score' sahəsini doldurmalısınız.")
+            if 'score' in self.initial_data and self.initial_data.get('score') is not None:
+                raise serializers.ValidationError("'score' sahəsi yalnız rəhbər tərəfindən doldurula bilər.")
         
-        return super().create(validated_data)
-
-    def update(self, instance, validated_data):
-        temp_score = validated_data.pop('temp_score', None)
-        evaluation_type = validated_data.get('evaluation_type', instance.evaluation_type)
+        # Rəhbər qiymətləndirməsi
+        else:
+            if 'score' not in self.initial_data or self.initial_data.get('score') is None:
+                raise serializers.ValidationError("Rəhbər dəyərləndirməsi üçün 'score' sahəsini doldurmalısınız.")
+            if 'self_score' in self.initial_data and self.initial_data.get('self_score') is not None:
+                raise serializers.ValidationError("'self_score' sahəsi yalnız işçinin özü tərəfindən doldurula bilər.")
         
-        if evaluation_type == KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION and temp_score:
-            validated_data['score'] = temp_score
-            
-        return super().update(instance, validated_data)
-
-    def validate_temp_score(self, value):
-        evaluation_type = self.initial_data.get('evaluation_type')
-        
-        if evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION:
-            if value < 1 or value > 10:
-                raise serializers.ValidationError("Öz değerlendirme skoru 1-10 arasında olmalıdır.")
-        elif evaluation_type == KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION:
-            if value < 1 or value > 100:
-                raise serializers.ValidationError("Üst değerlendirme skoru 1-100 arasında olmalıdır.")
-                
-        return value
+        return data

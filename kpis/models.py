@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.core.validators import MinValueValidator, MaxValueValidator
 from tasks.models import Task
 
 class KPIEvaluation(models.Model):
@@ -15,38 +16,32 @@ class KPIEvaluation(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="received_kpis"
     )
     
-    score = models.PositiveIntegerField(null=True, blank=True)
+    # Rəhbərin verdiyi bal (100-lük sistem)
+    score = models.PositiveIntegerField(
+        blank=True, 
+        null=True,
+        validators=[MinValueValidator(1), MaxValueValidator(100)]
+    )
     
-    self_evaluation_score = models.PositiveIntegerField(null=True, blank=True)
-    
+    # İşçinin özünə verdiyi bal (10-luq sistem)
+    self_score = models.PositiveIntegerField(
+        blank=True, 
+        null=True,
+        validators=[MinValueValidator(1), MaxValueValidator(10)]
+    )
+
     comment = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
+    
     evaluation_type = models.CharField(
         max_length=10,
         choices=EvaluationType.choices,
-        default=EvaluationType.SELF_EVALUATION,
+        default=EvaluationType.SUPERIOR_EVALUATION,
     )
-    
-    is_superior_evaluated = models.BooleanField(default=False)
 
     class Meta:
-        unique_together = ("task", "evaluatee")
+        unique_together = ("task", "evaluator", "evaluatee", "evaluation_type")
 
     def __str__(self):
-        return f"KPI {self.task.title}: {self.evaluatee} - Self: {self.self_evaluation_score}/10, Superior: {self.score}/100"
-
-    def get_final_score(self):
-        """Final score olarak üst rolun verdiği değeri döndür"""
-        return self.score if self.is_superior_evaluated else None
-
-    def save(self, *args, **kwargs):
-        if self.evaluation_type == self.EvaluationType.SELF_EVALUATION:
-            if hasattr(self, '_temp_score'):
-                self.self_evaluation_score = self._temp_score
-                self.score = None  # İlk aşamada score null kalır
-        elif self.evaluation_type == self.EvaluationType.SUPERIOR_EVALUATION:
-            self.is_superior_evaluated = True
-            
-        super().save(*args, **kwargs)
+        display_score = self.score if self.evaluation_type == self.EvaluationType.SUPERIOR_EVALUATION else self.self_score
+        return f"KPI {self.task.title}: {self.evaluator} -> {self.evaluatee} ({display_score}) - [{self.get_evaluation_type_display()}]"
