@@ -130,7 +130,7 @@ class AssignableUserListView(generics.ListAPIView):
     def get_queryset(self):
         user = self.request.user
 
-        if user.is_staff or user.role == 'admin':
+        if user.is_staff and user.role == 'admin':
             return User.objects.filter(is_active=True).exclude(pk=user.pk)
 
         if not user.department:
