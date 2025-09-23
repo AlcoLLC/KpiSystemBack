@@ -1,23 +1,25 @@
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.core.signing import Signer, BadSignature
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, permissions, views, status, generics
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from accounts.models import User, Department
-
 from .models import Task
 from .serializers import TaskSerializer, TaskUserSerializer
 from .utils import send_task_notification_email
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import TaskFilter
 from .pagination import CustomPageNumberPagination
+from django.utils import timezone
+from datetime import timedelta
+
 
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
     permission_classes = [permissions.IsAuthenticated]
-
     filter_backends = [DjangoFilterBackend]
     filterset_class = TaskFilter 
     pagination_class = CustomPageNumberPagination
@@ -176,3 +178,52 @@ class AssignableUserListView(generics.ListAPIView):
             role__in=lower_roles,
             is_active=True
         ).exclude(pk=user.pk).order_by("first_name", "last_name")
+
+
+# This view will provide the data for the bar chart
+class MonthlyTaskStatsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        # We reuse the TaskViewSet's queryset to respect user permissions
+        task_viewset = TaskViewSet()
+        task_viewset.request = request
+        base_queryset = task_viewset.get_queryset()
+
+        # Filter for completed tasks in the last 6 months
+        six_months_ago = timezone.now() - timedelta(days=180)
+        completed_tasks = base_queryset.filter(
+            status='DONE',
+            updated_at__gte=six_months_ago
+        ).extra(select={'month': "EXTRACT(month FROM updated_at)"}).values('month').annotate(count=Count('id')).order_by('month')
+        
+        # Format the data for the chart
+        labels = [(timezone.now() - timedelta(days=30 * i)).strftime('%B') for i in range(6)][::-1]
+        data = [0] * 6
+        month_map = {month: i for i, month in enumerate([(timezone.now() - timedelta(days=30 * i)).month for i in range(6)][::-1])}
+
+        for entry in completed_tasks:
+            month_index = month_map.get(entry['month'])
+            if month_index is not None:
+                data[month_index] = entry['count']
+
+        return Response({'labels': labels, 'data': data})
+
+# This view will provide the data for the doughnut chart
+class PriorityTaskStatsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        task_viewset = TaskViewSet()
+        task_viewset.request = request
+        base_queryset = task_viewset.get_queryset()
+
+        priority_stats = base_queryset.values('priority').annotate(count=Count('id')).order_by('priority')
+
+        # Get display names for priorities from the model
+        priority_map = dict(Task.PRIORITY_CHOICES)
+        
+        labels = [priority_map.get(p['priority'], p['priority']) for p in priority_stats]
+        data = [p['count'] for p in priority_stats]
+
+        return Response({'labels': labels, 'data': data})
