@@ -99,6 +99,35 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         allowed_evaluators = role_hierarchy.get(evaluatee.role, [])
         return evaluator.role in allowed_evaluators
 
+    def get_user_subordinates(self, user):
+        """
+        Kullanıcının alt seviyedeki işçilerini döndürür (aynı departmanda)
+        """
+        if user.role == 'admin':
+            # Admin hər kəsi görə bilər (top_management xaric)
+            return User.objects.exclude(role='top_management')
+        
+        if user.role == 'top_management':
+            # Top management hamını görə bilər
+            return User.objects.exclude(role='top_management')
+            
+        if user.role == 'department_lead':
+            # Department lead öz departamentindəki manager və employee-ləri görə bilər
+            return User.objects.filter(
+                department=user.department,
+                role__in=['manager', 'employee']
+            )
+            
+        if user.role == 'manager':
+            # Manager öz departamentindəki employee-ləri görə bilər
+            return User.objects.filter(
+                department=user.department,
+                role='employee'
+            )
+        
+        # Employee heç kimi görə bilməz (yalnız özünü)
+        return User.objects.none()
+
     def perform_create(self, serializer):
         evaluator = self.request.user
         evaluatee = serializer.validated_data["evaluatee"]
@@ -166,18 +195,55 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         })
 
     @action(detail=False, methods=['get'])
-    def pending_evaluations(self, request):
+    def kpi_dashboard_tasks(self, request):
+        """
+        KPI dashboard üçün məhdudlaşdırılmış tapşırıq siyahısı:
+        1. User-in öz tamamlanmış tapşırıqları
+        2. User-in dəyərləndirə biləcəyi alt işçilərin tapşırıqları
+        """
         from tasks.models import Task
         
         user = request.user
         
-        completed_tasks = Task.objects.filter(
+        # User-in öz tamamlanmış tapşırıqları
+        user_completed_tasks = Task.objects.filter(
+            assigned_to=user,
             status='DONE'
         ).select_related('assigned_to')
         
+        # User-in alt işçilərinin tamamlanmış tapşırıqları
+        subordinates = self.get_user_subordinates(user)
+        subordinate_tasks = Task.objects.filter(
+            assigned_to__in=subordinates,
+            status='DONE'
+        ).select_related('assigned_to')
+        
+        # İki qrupu birləşdir
+        all_tasks = user_completed_tasks.union(subordinate_tasks).order_by('-created_at')
+        
+        from tasks.serializers import TaskSerializer
+        return Response(TaskSerializer(all_tasks, many=True).data)
+
+    @action(detail=False, methods=['get'])
+    def pending_evaluations(self, request):
+        """
+        Gözləyən dəyərləndirmələr - yalnız əlaqəli tapşırıqlar
+        """
+        from tasks.models import Task
+        
+        user = request.user
+        
+        # KPI dashboard tasks-dan istifadə et
+        dashboard_response = self.kpi_dashboard_tasks(request)
+        tasks_data = dashboard_response.data
+        
+        # Task ID-lərini çıxart
+        task_ids = [task_data['id'] for task_data in tasks_data]
+        tasks = Task.objects.filter(id__in=task_ids).select_related('assigned_to')
+        
         pending = []
         
-        for task in completed_tasks:
+        for task in tasks:
             if not task.assigned_to:
                 continue
                 
@@ -270,14 +336,20 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def my_subordinates_pending_evaluations(self, request):
+        """
+        Alt işçilərimin gözləyən dəyərləndirmələri - yalnız əlaqəli tapşırıqlar
+        """
         from tasks.models import Task
         
         user = request.user
+        subordinates = self.get_user_subordinates(user)
+        
         pending = []
         
-        # Bütün tamamlanmış tapşırıqları götür
+        # Yalnız alt işçilərin tamamlanmış tapşırıqları
         completed_tasks = Task.objects.filter(
-            status='DONE'
+            status='DONE',
+            assigned_to__in=subordinates
         ).select_related('assigned_to')
         
         for task in completed_tasks:
