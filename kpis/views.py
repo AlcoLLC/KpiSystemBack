@@ -73,6 +73,10 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         """
         Dəyərləndirici istifadəçini dəyərləndirə bilərmi yoxla - departman əsaslı
         """
+        # Döngü önlemek için temel kontroller
+        if evaluator == evaluatee:
+            return False  # Kendini değerlendirmek için farklı mantık var
+            
         if evaluator.role == 'admin':
             # Admin yalnız top_management xaric hamını dəyərləndirə bilər
             return evaluatee.role != 'top_management'
@@ -80,19 +84,20 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         if evaluatee.role == 'top_management':
             return False  # Heç kim top_management-i dəyərləndirmir
             
-        # Aynı departmanda olmaları şərti (admin istisna)
-        if evaluator.department != evaluatee.department and evaluator.role != 'admin':
+        # Aynı departmanda olmaları şərti (admin ve top_management istisna)
+        if (evaluator.department != evaluatee.department and 
+            evaluator.role not in ['admin', 'top_management']):
             return False
         
-        # Hiyerarxiya qaydaları
-        if evaluatee.role == 'employee':
-            return evaluator.role in ['manager', 'department_lead', 'top_management']
-        elif evaluatee.role == 'manager':
-            return evaluator.role in ['department_lead', 'top_management']
-        elif evaluatee.role == 'department_lead':
-            return evaluator.role in ['top_management']
-            
-        return False
+        # Hiyerarxiya qaydaları - sadece direkt üst seviyelere izin
+        role_hierarchy = {
+            'employee': ['manager', 'department_lead', 'top_management'],
+            'manager': ['department_lead', 'top_management'],
+            'department_lead': ['top_management']
+        }
+        
+        allowed_evaluators = role_hierarchy.get(evaluatee.role, [])
+        return evaluator.role in allowed_evaluators
 
     def perform_create(self, serializer):
         evaluator = self.request.user
