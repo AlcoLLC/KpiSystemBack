@@ -23,76 +23,58 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             Q(evaluator=user) | Q(evaluatee=user)
         ).select_related('task', 'evaluator', 'evaluatee')
 
-    def find_evaluator_for_user(self, evaluatee):
-        """
-        Aynı departmandaki hiyerarşiye göre en yakın rəhbəri tapır
-        """
-        if evaluatee.role == 'top_management':
-            return None  # top_management-i heç kim dəyərləndirmir
-        
-        # Prioritet sırası: birbaşa üst → aynı departmandaki üst
-        if evaluatee.role == 'employee':
-            # Aynı departmanda manager axtarırıq
-            manager = User.objects.filter(
-                role='manager', 
-                department=evaluatee.department
-            ).first()
-            if manager:
-                return manager
-                
-            # Aynı departmanda department_lead axtarırıq
-            dept_lead = User.objects.filter(
-                role='department_lead', 
-                department=evaluatee.department
-            ).first()
-            if dept_lead:
-                return dept_lead
-                
-            # Son çare olaraq top_management
-            return User.objects.filter(role='top_management').first()
-            
-        elif evaluatee.role == 'manager':
-            # Manager üçün department_lead axtarırıq
-            dept_lead = User.objects.filter(
-                role='department_lead', 
-                department=evaluatee.department
-            ).first()
-            if dept_lead:
-                return dept_lead
-                
-            # Son çare olaraq top_management
-            return User.objects.filter(role='top_management').first()
-            
-        elif evaluatee.role == 'department_lead':
-            # Department_lead üçün yalnız top_management
-            return User.objects.filter(role='top_management').first()
-            
-        return None
-
     def can_evaluate_user(self, evaluator, evaluatee):
         """
-        Dəyərləndirici istifadəçini dəyərləndirə bilərmi yoxla - departman əsaslı
+        Dəyərləndirici istifadəçini dəyərləndirə bilərmi yoxla
         """
         if evaluator.role == 'admin':
             # Admin yalnız top_management xaric hamını dəyərləndirə bilər
             return evaluatee.role != 'top_management'
         
-        if evaluatee.role == 'top_management':
-            return False  # Heç kim top_management-i dəyərləndirmir
-            
-        # Aynı departmanda olmaları şərti (admin istisna)
-        if evaluator.department != evaluatee.department and evaluator.role != 'admin':
+        # Aynı departmanda olup olmadığını kontrol et
+        if evaluator.department != evaluatee.department:
             return False
         
-        # Hiyerarxiya qaydaları
+        # Hiyerarxiya qaydaları - aynı departman içinde
         if evaluatee.role == 'employee':
+            # Employee'yi aynı departmandaki manager, department_lead veya top_management değerlendirebilir
             return evaluator.role in ['manager', 'department_lead', 'top_management']
         elif evaluatee.role == 'manager':
+            # Manager'ı aynı departmandaki department_lead veya top_management değerlendirebilir
             return evaluator.role in ['department_lead', 'top_management']
         elif evaluatee.role == 'department_lead':
-            return evaluator.role in ['top_management']
+            # Department_lead'i sadece top_management değerlendirebilir
+            return evaluator.role == 'top_management'
+        else:
+            # top_management'i kimse değerlendirmez
+            return False
+
+    def get_preferred_evaluator_for_user(self, evaluatee):
+        """
+        İstifadəçi üçün birbaşa üstü tap - aynı departman içinde
+        """
+        if evaluatee.role == 'top_management':
+            return None  # top_management-i heç kim dəyərləndirmir
             
-        return False
+        # Hiyerarxik sıralama - aynı departman içinde
+        hierarchy_order = {
+            'employee': ['manager', 'department_lead', 'top_management'],
+            'manager': ['department_lead', 'top_management'], 
+            'department_lead': ['top_management']
+        }
+        
+        preferred_roles = hierarchy_order.get(evaluatee.role, [])
+        
+        # İlk olaraq birbaşa üstü axtarırıq - aynı departmanda
+        for role in preferred_roles:
+            evaluator = User.objects.filter(
+                role=role, 
+                department=evaluatee.department
+            ).first()
+            if evaluator:
+                return evaluator
+        
+        return None
 
     def perform_create(self, serializer):
         evaluator = self.request.user
@@ -173,13 +155,9 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         pending = []
         
         for task in completed_tasks:
-            if not task.assigned_to:
-                continue
-                
             can_evaluate = False
             evaluation_type = None
             
-            # Öz dəyərləndirməsi kontrolu
             if task.assigned_to == user:
                 if not KPIEvaluation.objects.filter(
                     task=task,
@@ -190,7 +168,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                     evaluation_type = 'SELF'
             
             else:
-                # Üst dəyərləndirməsi kontrolu
                 if self.can_evaluate_user(user, task.assigned_to):
                     has_self_eval = KPIEvaluation.objects.filter(
                         task=task,
@@ -205,7 +182,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                         evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
                     ).exists()
                     
-                    # Admin istisna olmaqla, öz dəyərləndirmə şərtidir
                     if (has_self_eval or user.role == 'admin') and not has_superior_eval:
                         can_evaluate = True
                         evaluation_type = 'SUPERIOR'
@@ -261,7 +237,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             'is_complete': bool(self_evaluation and superior_evaluation)
         }
         
-        return summary
+        return Response(summary)
 
     @action(detail=False, methods=['get'])
     def my_subordinates_pending_evaluations(self, request):
