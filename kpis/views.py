@@ -25,44 +25,78 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
     def can_evaluate_user(self, evaluator, evaluatee):
         """
-        Dəyərləndirici istifadəçini dəyərləndirə bilərmi yoxla
+        Departamenta görə hiyerarxik dəyərləndirmə qaydalarını yoxla
         """
         if evaluator.role == 'admin':
             # Admin yalnız top_management xaric hamını dəyərləndirə bilər
             return evaluatee.role != 'top_management'
         
-        # Hiyerarxiya qaydaları
-        evaluation_rules = {
-            'employee': ['manager', 'department_lead', 'top_management'],
-            'manager': ['department_lead', 'top_management'],
-            'department_lead': ['top_management'],
-            'top_management': []  # Heç kim top_management-i dəyərləndirmir
-        }
+        # Eyni departamentdə olmalıdırlar (NULL departament da daxil)
+        if evaluator.department != evaluatee.department:
+            return False
         
-        allowed_evaluators = evaluation_rules.get(evaluatee.role, [])
-        return evaluator.role in allowed_evaluators
+        # top_management-i heç kim dəyərləndirmir
+        if evaluatee.role == 'top_management':
+            return False
+            
+        # Hiyerarxiya qaydaları departamentdə
+        if evaluatee.role == 'employee':
+            return evaluator.role in ['manager', 'department_lead', 'top_management']
+        elif evaluatee.role == 'manager':
+            return evaluator.role in ['department_lead', 'top_management']
+        elif evaluatee.role == 'department_lead':
+            return evaluator.role == 'top_management'
+        
+        return False
 
     def get_preferred_evaluator_for_user(self, evaluatee):
         """
-        İstifadəçi üçün birbaşa üstü tap
+        İstifadəçi üçün departamentindəki birbaşa üstü tap
         """
         if evaluatee.role == 'top_management':
-            return None  # top_management-i heç kim dəyərləndirmir
+            return None
             
-        # Hiyerarxik sıralama
-        hierarchy_order = {
-            'employee': ['manager', 'department_lead', 'top_management'],
-            'manager': ['department_lead', 'top_management'], 
-            'department_lead': ['top_management']
-        }
+        department = evaluatee.department
         
-        preferred_roles = hierarchy_order.get(evaluatee.role, [])
-        
-        # İlk olaraq birbaşa üstü axtarırıq
-        for role in preferred_roles:
-            evaluator = User.objects.filter(role=role).first()
+        # Hiyerarxik sıralama departamentdə
+        if evaluatee.role == 'employee':
+            # İlk manager axtarırıq eyni departamentdə
+            evaluator = User.objects.filter(
+                role='manager', 
+                department=department
+            ).first()
             if evaluator:
                 return evaluator
+            
+            # Manager yoxdursa department_lead axtarırıq
+            evaluator = User.objects.filter(
+                role='department_lead', 
+                department=department
+            ).first()
+            if evaluator:
+                return evaluator
+            
+            # Heç biri yoxdursa top_management
+            evaluator = User.objects.filter(role='top_management').first()
+            return evaluator
+            
+        elif evaluatee.role == 'manager':
+            # İlk department_lead axtarırıq eyni departamentdə
+            evaluator = User.objects.filter(
+                role='department_lead', 
+                department=department
+            ).first()
+            if evaluator:
+                return evaluator
+            
+            # Yoxdursa top_management
+            evaluator = User.objects.filter(role='top_management').first()
+            return evaluator
+            
+        elif evaluatee.role == 'department_lead':
+            # Yalnız top_management
+            evaluator = User.objects.filter(role='top_management').first()
+            return evaluator
         
         return None
 
@@ -95,7 +129,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         else:
             # Üst dəyərləndirməsi
             if not self.can_evaluate_user(evaluator, evaluatee):
-                raise PermissionDenied("Bu işçini dəyərləndirməyə icazəniz yoxdur.")
+                raise PermissionDenied("Bu işçini dəyərləndirməyə icazəniz yoxdur. Eyni departamentdə olmalı və hiyerarxiya qaydalarına uygun olmalısınız.")
 
             # Admin xaric üçün, öz dəyərləndirməsi tamamlanmalıdır
             if evaluator.role != 'admin':
@@ -264,8 +298,37 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                             'id': task.assigned_to.id,
                             'username': task.assigned_to.username,
                             'full_name': task.assigned_to.get_full_name(),
-                            'role': task.assigned_to.role
+                            'role': task.assigned_to.role,
+                            'department': task.assigned_to.department.name if task.assigned_to.department else 'Departament təyin edilməyib'
                         }
                     })
         
         return Response(pending)
+
+    @action(detail=False, methods=['get'])
+    def can_evaluate(self, request):
+        """
+        İstifadəçinin hansı işçiləri dəyərləndirə biləcəyini yoxla
+        """
+        user = request.user
+        evaluable_users = []
+        
+        if user.role == 'admin':
+            # Admin top_management xaric hamını dəyərləndirə bilər
+            users = User.objects.exclude(role='top_management').exclude(id=user.id)
+        else:
+            # Departamentindəki alt səviyyədəki istifadəçiləri tap
+            department = user.department
+            users = User.objects.filter(department=department).exclude(id=user.id)
+        
+        for potential_evaluatee in users:
+            if self.can_evaluate_user(user, potential_evaluatee):
+                evaluable_users.append({
+                    'id': potential_evaluatee.id,
+                    'username': potential_evaluatee.username,
+                    'full_name': potential_evaluatee.get_full_name(),
+                    'role': potential_evaluatee.role,
+                    'department': potential_evaluatee.department.name if potential_evaluatee.department else None
+                })
+        
+        return Response(evaluable_users)
