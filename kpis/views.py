@@ -25,38 +25,41 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
     def can_evaluate_user(self, evaluator, evaluatee):
         """
-        Dəyərləndirici istifadəçini dəyərləndirə bilərmi yoxla
+        Departamental hiyerarxiyaya göre dəyərləndirici istifadəçini dəyərləndirə bilərmi yoxla
         """
         if evaluator.role == 'admin':
             # Admin yalnız top_management xaric hamını dəyərləndirə bilər
             return evaluatee.role != 'top_management'
         
-        # Aynı departmanda olup olmadığını kontrol et
-        if evaluator.department != evaluatee.department:
+        # Eyni departamentdə olub-olmadığını yoxla
+        if not (evaluator.department and evaluatee.department):
+            return False
+            
+        if evaluator.department.id != evaluatee.department.id:
             return False
         
-        # Hiyerarxiya qaydaları - aynı departman içinde
-        if evaluatee.role == 'employee':
-            # Employee'yi aynı departmandaki manager, department_lead veya top_management değerlendirebilir
-            return evaluator.role in ['manager', 'department_lead', 'top_management']
-        elif evaluatee.role == 'manager':
-            # Manager'ı aynı departmandaki department_lead veya top_management değerlendirebilir
-            return evaluator.role in ['department_lead', 'top_management']
-        elif evaluatee.role == 'department_lead':
-            # Department_lead'i sadece top_management değerlendirebilir
-            return evaluator.role == 'top_management'
-        else:
-            # top_management'i kimse değerlendirmez
-            return False
+        # Departamental hiyerarxiya qaydaları
+        evaluation_rules = {
+            'employee': ['manager', 'department_lead', 'top_management'],
+            'manager': ['department_lead', 'top_management'],
+            'department_lead': ['top_management'],
+            'top_management': []  # Heç kim top_management-i dəyərləndirmir
+        }
+        
+        allowed_evaluators = evaluation_rules.get(evaluatee.role, [])
+        return evaluator.role in allowed_evaluators
 
     def get_preferred_evaluator_for_user(self, evaluatee):
         """
-        İstifadəçi üçün birbaşa üstü tap - aynı departman içinde
+        İstifadəçi üçün eyni departamentdə birbaşa üstü tap
         """
         if evaluatee.role == 'top_management':
             return None  # top_management-i heç kim dəyərləndirmir
             
-        # Hiyerarxik sıralama - aynı departman içinde
+        if not evaluatee.department:
+            return None
+            
+        # Hiyerarxik sıralama - eyni departamentdə
         hierarchy_order = {
             'employee': ['manager', 'department_lead', 'top_management'],
             'manager': ['department_lead', 'top_management'], 
@@ -65,7 +68,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         
         preferred_roles = hierarchy_order.get(evaluatee.role, [])
         
-        # İlk olaraq birbaşa üstü axtarırıq - aynı departmanda
+        # İlk olaraq eyni departamentdə birbaşa üstü axtarırıq
         for role in preferred_roles:
             evaluator = User.objects.filter(
                 role=role, 
@@ -105,7 +108,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         else:
             # Üst dəyərləndirməsi
             if not self.can_evaluate_user(evaluator, evaluatee):
-                raise PermissionDenied("Bu işçini dəyərləndirməyə icazəniz yoxdur.")
+                raise PermissionDenied("Bu işçini dəyərləndirməyə icazəniz yoxdur. Yalnız eyni departamentdəki alt səviyyədəki işçiləri dəyərləndirə bilərsiniz.")
 
             # Admin xaric üçün, öz dəyərləndirməsi tamamlanmalıdır
             if evaluator.role != 'admin':
@@ -150,7 +153,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         
         completed_tasks = Task.objects.filter(
             status='DONE'
-        ).select_related('assigned_to')
+        ).select_related('assigned_to', 'assigned_to__department')
         
         pending = []
         
@@ -158,6 +161,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             can_evaluate = False
             evaluation_type = None
             
+            # Öz dəyərləndirmə yoxlaması
             if task.assigned_to == user:
                 if not KPIEvaluation.objects.filter(
                     task=task,
@@ -167,6 +171,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                     can_evaluate = True
                     evaluation_type = 'SELF'
             
+            # Üst dəyərləndirmə yoxlaması
             else:
                 if self.can_evaluate_user(user, task.assigned_to):
                     has_self_eval = KPIEvaluation.objects.filter(
@@ -249,7 +254,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         # Bütün tamamlanmış tapşırıqları götür
         completed_tasks = Task.objects.filter(
             status='DONE'
-        ).select_related('assigned_to')
+        ).select_related('assigned_to', 'assigned_to__department')
         
         for task in completed_tasks:
             if task.assigned_to and self.can_evaluate_user(user, task.assigned_to):
