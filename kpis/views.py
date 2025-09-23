@@ -148,7 +148,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             can_evaluate = False
             evaluation_type = None
             
-            # Öz dəyərləndirməsi
             if task.assigned_to == user:
                 if not KPIEvaluation.objects.filter(
                     task=task,
@@ -159,7 +158,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                     evaluation_type = 'SELF'
             
             else:
-                # Üst dəyərləndirməsi
                 if self.can_evaluate_user(user, task.assigned_to):
                     has_self_eval = KPIEvaluation.objects.filter(
                         task=task,
@@ -199,7 +197,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def evaluation_summary(self, request):
-        """Bir tapşırığın bütün değerlendirmelerini birleştir"""
         task_id = request.query_params.get('task_id')
         evaluatee_id = request.query_params.get('evaluatee_id')
         
@@ -234,7 +231,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def my_subordinates_pending_evaluations(self, request):
-        """Mənə tabe olan işçilərin gözləyən dəyərləndirmələri"""
         from tasks.models import Task
         
         user = request.user
@@ -247,7 +243,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         
         for task in completed_tasks:
             if task.assigned_to and self.can_evaluate_user(user, task.assigned_to):
-                # Öz dəyərləndirməsi varsa və üst dəyərləndirməsi yoxsa
                 has_self_eval = KPIEvaluation.objects.filter(
                     task=task,
                     evaluatee=task.assigned_to,
