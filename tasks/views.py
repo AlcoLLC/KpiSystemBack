@@ -41,7 +41,6 @@ class TaskViewSet(viewsets.ModelViewSet):
             try:
                 user_departments = Department.objects.filter(lead=user)
                 if user_departments.exists():
-                    # Düzəliş: Yalnız tabeliyində olan rolları göstərmək üçün şərt əlavə edildi
                     subordinate_tasks = Q(
                         assignee__department__in=user_departments,
                         assignee__role__in=['manager', 'employee']
@@ -77,44 +76,32 @@ class TaskViewSet(viewsets.ModelViewSet):
         if creator == assignee:
             superior = creator.get_superior()
             if superior:
-                task = serializer.save(created_by=creator, approved=False)
+                task = serializer.save(created_by=creator, approved=False, status="PENDING")
                 send_task_notification_email(task, notification_type="approval_request")
             else:
-                task = serializer.save(created_by=creator, approved=True)
-            return
-
-        if creator.role == "admin":
-            if assignee.role == "admin":
-                raise PermissionDenied("You cannot assign tasks to another admin.")
-            task = serializer.save(created_by=creator, approved=False)
-            send_task_notification_email(task, notification_type="new_assignment")
-            return
-
-        if creator.role == "top_management":
-            if assignee.role not in ["department_lead", "manager", "employee"]:
-                raise PermissionDenied("Top Management can only assign tasks to Department Leads, Managers, or Employees.")
-            task = serializer.save(created_by=creator, approved=False)
-            send_task_notification_email(task, notification_type="new_assignment")
-            return
-
-        if creator.role == "department_lead":
-            if assignee.role not in ["manager", "employee"]:
-                raise PermissionDenied("Department Leads can only assign tasks to Managers or Employees.")
-            task = serializer.save(created_by=creator, approved=False)
-            send_task_notification_email(task, notification_type="new_assignment")
-            return
-
-        if creator.role == "manager":
-            if assignee.role != "employee":
-                raise PermissionDenied("Managers can only assign tasks to Employees.")
-            task = serializer.save(created_by=creator, approved=False)
-            send_task_notification_email(task, notification_type="new_assignment")
+                task = serializer.save(created_by=creator, approved=True, status="TODO")
             return
 
         if creator.role == "employee":
             raise PermissionDenied("Employees cannot assign tasks to others.")
+        
+        allowed_assignments = {
+            "top_management": ["department_lead", "manager", "employee"],
+            "department_lead": ["manager", "employee"],
+            "manager": ["employee"],
+            "admin": ["top_management", "department_lead", "manager", "employee"]
+        }
 
-        raise PermissionDenied("You are not allowed to assign this task.")
+        allowed_roles = allowed_assignments.get(creator.role, [])
+        if assignee.role not in allowed_roles:
+            raise PermissionDenied(f"{creator.get_role_display()} can only assign tasks to specific roles.")
+
+        if creator.role in ["admin", "top_management"]:
+            task = serializer.save(created_by=creator, approved=True, status="TODO")
+        else:
+            task = serializer.save(created_by=creator, approved=False, status="PENDING")
+        
+        send_task_notification_email(task, notification_type="new_assignment")
 
 
 class TaskVerificationView(views.APIView):
