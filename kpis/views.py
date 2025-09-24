@@ -181,25 +181,19 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def kpi_dashboard_tasks(self, request):
-        """
-        KPI dashboard üçün məhdudlaşdırılmış tapşırıq siyahısı.
-        assigned_to -> assignee olaraq düzəldildi.
-        """
-        user = request.user
+        user = self.request.user
         
-        user_completed_tasks = Task.objects.filter(
-            assignee=user,
-            status='DONE'
-        ).select_related('assignee')
-        
+        # ... (user_completed_tasks və subordinate_tasks olduğu kimi qalır)
+        user_completed_tasks = Task.objects.filter(assignee=user, status='DONE')
         subordinates = self.get_user_subordinates(user)
-        subordinate_tasks = Task.objects.filter(
-            assignee__in=subordinates,
-            status='DONE'
-        ).select_related('assignee')
+        subordinate_tasks = Task.objects.filter(assignee__in=subordinates, status='DONE')
         
         all_tasks = user_completed_tasks.union(subordinate_tasks).order_by('-created_at')
         
+        # EFFEKTİVLİK ÜÇÜN prefetch_related ƏLAVƏ EDİLİR
+        all_tasks = all_tasks.select_related('assignee', 'created_by').prefetch_related('evaluations__evaluator', 'evaluations__evaluatee')
+
+        # TaskSerializer artıq evaluations sahəsini özü qaytaracaq
         return Response(TaskSerializer(all_tasks, many=True).data)
 
     @action(detail=False, methods=['get'])
