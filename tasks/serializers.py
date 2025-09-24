@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import Task
 from accounts.models import User
 from accounts.serializers import UserSerializer
+from kpis.serializers import KPIEvaluationSerializer
 
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -11,6 +12,7 @@ class TaskSerializer(serializers.ModelSerializer):
     assignee = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    evaluations = KPIEvaluationSerializer(many=True, read_only=True)
 
     class Meta:
         model = Task
@@ -31,6 +33,7 @@ class TaskSerializer(serializers.ModelSerializer):
             'created_at',
             'status_display',
             'priority_display',
+            'evaluations',
         ]
 
         read_only_fields = [
