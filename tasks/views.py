@@ -184,53 +184,42 @@ class AssignableUserListView(generics.ListAPIView):
 
 
 # This view will provide the data for the bar chart
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import permissions
+from django.db.models import Count
+from django.db.models.functions import TruncMonth
+from django.utils import timezone
+from datetime import timedelta
+
 class MonthlyTaskStatsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        # TaskViewSet-in queryset məntiqini təkrar istifadə edirik ki, icazələr qorunsun
         task_viewset = TaskViewSet()
         task_viewset.request = request
         base_queryset = task_viewset.get_queryset()
 
-        # Son 6 ayın başlanğıc tarixini təyin edirik
-        six_months_ago = date(timezone.now().year, timezone.now().month, 1) - timedelta(days=150)
-        six_months_ago = date(six_months_ago.year, six_months_ago.month, 1)
+        six_months_ago = timezone.now() - timedelta(days=180)
 
-        # DÜZƏLİŞ: `updated_at` yerinə `created_at` istifadə edirik
-        # DÜZƏLİŞ: `.extra()` yerinə `.annotate(month=TruncMonth('created_at'))` istifadə edirik
         completed_tasks_stats = base_queryset.filter(
             status='DONE',
             created_at__gte=six_months_ago
         ).annotate(
             month=TruncMonth('created_at')
         ).values('month').annotate(count=Count('id')).order_by('month')
-
-        # Chart üçün datanı formatlayırıq
-        stats_dict = {item['month'].strftime('%Y-%m'): item['count'] for item in completed_tasks_stats}
-
-        labels = []
-        data = []
         
-        current_date = date(timezone.now().year, timezone.now().month, 1)
-        for i in range(6):
-            # Ay adlarını Azərbaycan dilində (və ya sistem dilində) almaq üçün
-            month_label = month_name[current_date.month]
-            labels.append(f"{month_label} {current_date.year}")
-            
-            month_key = current_date.strftime('%Y-%m')
-            data.append(stats_dict.get(month_key, 0))
-            
-            # Bir ay geri gedirik
-            first_day_of_month = current_date.replace(day=1)
-            current_date = first_day_of_month - timedelta(days=1)
-
-        # Nəticələri tərs çeviririk ki, xronoloji olsun
-        labels.reverse()
-        data.reverse()
+        # Frontend-ə formatlanmamış, standart data göndəririk
+        stats = [
+            {
+                "month": item['month'].strftime('%Y-%m'), 
+                "count": item['count']
+            } 
+            for item in completed_tasks_stats
+        ]
         
-        return Response({'labels': labels, 'data': data})
-    
+        return Response(stats)
+        
 # This view will provide the data for the doughnut chart
 class PriorityTaskStatsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
