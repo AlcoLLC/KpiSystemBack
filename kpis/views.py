@@ -16,15 +16,22 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
     serializer_class = KPIEvaluationSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    # kpi/views.py -> KPIEvaluationViewSet
     def get_queryset(self):
         user = self.request.user
         
         if user.role == 'admin':
             return KPIEvaluation.objects.all().select_related('task', 'evaluator', 'evaluatee')
+
+        # Rəhbərin tabeliyində olan işçiləri tapırıq
+        subordinates = self.get_user_subordinates(user)
         
+        # Sorğunu genişləndiririk:
+        # 1. User-in özünün daxil olduğu dəyərləndirmələr
+        # 2. VƏ ya dəyərləndirilən şəxsin (evaluatee) user-in tabeliyində olduğu dəyərləndirmələr
         return KPIEvaluation.objects.filter(
-            Q(evaluator=user) | Q(evaluatee=user)
-        ).select_related('task', 'evaluator', 'evaluatee')
+            Q(evaluator=user) | Q(evaluatee=user) | Q(evaluatee__in=subordinates)
+        ).distinct().select_related('task', 'evaluator', 'evaluatee')
 
     def find_evaluator_for_user(self, evaluatee):
         """
