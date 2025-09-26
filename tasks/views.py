@@ -1,4 +1,4 @@
-from django.db.models import Q, Count
+from django.db.models import Q, F, Count
 from django.db.models.functions import TruncMonth
 from django.core.signing import Signer, BadSignature
 from django.shortcuts import get_object_or_404
@@ -15,6 +15,30 @@ from .filters import TaskFilter
 from .pagination import CustomPageNumberPagination
 from django.utils import timezone
 from datetime import timedelta
+
+class HomeStatsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        base_queryset = TaskViewSet.get_queryset(self) 
+
+        pending_count = base_queryset.filter(status='PENDING').count()
+        in_progress_count = base_queryset.filter(status='IN_PROGRESS').count()
+        cancelled_count = base_queryset.filter(status='CANCELLED').count()
+        today = timezone.now().date()
+        start_of_month = today.replace(day=1)
+        overdue_not_completed = Q(due_date__lt=today, status__in=['PENDING', 'TODO', 'IN_PROGRESS'])
+        late_completed_this_month = Q(completed_at__gte=start_of_month, completed_at__date__gt=F('due_date'))
+        overdue_count = base_queryset.filter(overdue_not_completed | late_completed_this_month).distinct().count()
+
+        data = {
+            "pending": pending_count,
+            "in_progress": in_progress_count,
+            "cancelled": cancelled_count,
+            "overdue": overdue_count,
+        }
+        return Response(data, status=status.HTTP_200_OK)
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer

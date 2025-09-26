@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
 
 class Task(models.Model):
     STATUS_CHOICES = [
@@ -36,6 +37,12 @@ class Task(models.Model):
     approved = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True, verbose_name="Tamamlanma tarixi")
+    
+    def save(self, *args, **kwargs):
+        if self.status == 'DONE' and not self.completed_at:
+            self.completed_at = timezone.now()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.title} -> {self.assignee.username}"
