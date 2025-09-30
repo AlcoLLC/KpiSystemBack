@@ -21,16 +21,25 @@ class HomeStatsView(APIView):
 
     def get(self, request, *args, **kwargs):
         user = request.user
-        base_queryset = TaskViewSet.get_queryset(self) 
+        task_viewset = TaskViewSet()
+        task_viewset.request = request
+        base_queryset = task_viewset.get_queryset()
 
-        pending_count = base_queryset.filter(status='PENDING').count()
-        in_progress_count = base_queryset.filter(status='IN_PROGRESS').count()
-        cancelled_count = base_queryset.filter(status='CANCELLED').count()
+        if user.role != 'employee':
+            stats_queryset = base_queryset.exclude(assignee=user)
+        else:
+            
+            stats_queryset = base_queryset
+
+        pending_count = stats_queryset.filter(status='PENDING').count()
+        in_progress_count = stats_queryset.filter(status='IN_PROGRESS').count()
+        cancelled_count = stats_queryset.filter(status='CANCELLED').count()
+        
         today = timezone.now().date()
-        start_of_month = today.replace(day=1)
-        overdue_not_completed = Q(due_date__lt=today, status__in=['PENDING', 'TODO', 'IN_PROGRESS'])
-        late_completed_this_month = Q(completed_at__gte=start_of_month, completed_at__date__gt=F('due_date'))
-        overdue_count = base_queryset.filter(overdue_not_completed | late_completed_this_month).distinct().count()
+        overdue_count = stats_queryset.filter(
+            due_date__lt=today, 
+            status__in=['PENDING', 'TODO', 'IN_PROGRESS']
+        ).count()
 
         data = {
             "pending": pending_count,
