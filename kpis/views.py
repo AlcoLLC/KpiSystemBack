@@ -17,17 +17,30 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """
+        Kullanıcının sadece görme yetkisi olan değerlendirmeleri listeler.
+        """
         user = self.request.user
-        
-        if user.role == 'admin':
-            return KPIEvaluation.objects.all().select_related('task', 'evaluator', 'evaluatee')
+        if user.is_staff or user.role == 'admin':
+            return self.queryset.select_related('task', 'evaluator', 'evaluatee')
 
-        # User-in özü və tabeliyindəkilərin dəyərləndirmələri
-        subordinates = self.get_user_subordinates(user)
+        # Hiyerarşik olarak altındaki herkesin ve kendi değerlendirmelerini görebilir.
+        role_hierarchy = ["employee", "manager", "department_lead", "top_management", "admin"]
+        try:
+            user_level = role_hierarchy.index(user.role)
+        except ValueError:
+            user_level = -1
         
-        return KPIEvaluation.objects.filter(
-            Q(evaluator=user) | Q(evaluatee=user) | Q(evaluatee__in=subordinates)
-        ).distinct().select_related('task', 'evaluator', 'evaluatee')
+        allowed_roles_to_view = role_hierarchy[:user_level]
+
+        # Kullanıcının kendi değerlendirmeleri
+        own_evaluations = Q(evaluatee=user) | Q(evaluator=user)
+        
+        # Astlarının değerlendirmeleri (Rol bazlı)
+        subordinate_evaluations = Q(evaluatee__role__in=allowed_roles_to_view)
+
+        return self.queryset.filter(own_evaluations | subordinate_evaluations).distinct().select_related('task', 'evaluator', 'evaluatee')
+
 
     def get_direct_superior(self, employee):
         """
@@ -179,57 +192,47 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         evaluatee = serializer.validated_data["evaluatee"]
         task = serializer.validated_data["task"]
 
-        # Top management taskları dəyərləndirmə olunmur
         if evaluatee.role == 'top_management':
-            raise PermissionDenied("Top management taskları dəyərləndirmə olunmur.")
+            raise PermissionDenied("Top management görevleri değerlendirilemez.")
 
+        # Öz Değerlendirme Mantığı
         if evaluator == evaluatee:
-            # Öz dəyərləndirməsi
             if KPIEvaluation.objects.filter(
-                task=task, 
-                evaluatee=evaluatee, 
-                evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+                task=task, evaluatee=evaluatee, evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
             ).exists():
-                raise ValidationError("Bu tapşırıq üçün artıq öz dəyərləndirmənizi etmisiniz.")
+                raise ValidationError("Bu görev için zaten bir öz değerlendirme yaptınız.")
 
             instance = serializer.save(
                 evaluator=evaluator, 
                 evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
             )
-            
-            try:
-                send_kpi_evaluation_request_email(instance)
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Email göndəriləmədi: {str(e)}")
-
+            # Başarılı öz değerlendirme sonrası amire email gönder
+            send_kpi_evaluation_request_email(instance)
+        
+        # Üst Değerlendirme Mantığı
         else:
-            # Üst dəyərləndirməsi - sadəcə birbaşa rəhbər
-            if not self.can_evaluate_user(evaluator, evaluatee):
-                raise PermissionDenied("Bu işçini dəyərləndirməyə icazəniz yoxdur. Sadəcə birbaşa rəhbər dəyərləndirə bilər.")
+            direct_superior = evaluatee.get_direct_superior()
+            
+            # Sadece DOĞRUDAN amir veya admin değerlendirme yapabilir
+            if not (direct_superior and direct_superior == evaluator) and not evaluator.role == 'admin':
+                raise PermissionDenied("Bu kullanıcıyı değerlendirme yetkiniz yok. Sadece doğrudan amir değerlendirme yapabilir.")
 
-            # Admin istisnaları (admin öz dəyərləndirməsini tələb etmir)
-            if evaluator.role != 'admin':
-                if not KPIEvaluation.objects.filter(
-                    task=task,
-                    evaluatee=evaluatee,
-                    evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
-                ).exists():
-                    raise ValidationError("Bu dəyərləndirməni etməzdən əvvəl işçi öz dəyərləndirməsini tamamlamalıdır.")
+            # Üst değerlendirme için önce öz değerlendirme yapılmalı (admin hariç)
+            if not KPIEvaluation.objects.filter(
+                task=task, evaluatee=evaluatee, evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+            ).exists() and evaluator.role != 'admin':
+                raise ValidationError("Üst değerlendirme yapmadan önce çalışanın öz değerlendirmesini tamamlaması gerekir.")
 
             if KPIEvaluation.objects.filter(
-                task=task, 
-                evaluator=evaluator, 
-                evaluatee=evaluatee, 
-                evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+                task=task, evaluator=evaluator, evaluatee=evaluatee, evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
             ).exists():
-                raise ValidationError("Bu işçini bu tapşırıq üçün artıq dəyərləndirmisiniz.")
+                raise ValidationError("Bu görevi bu çalışan için zaten değerlendirdiniz.")
 
-            instance = serializer.save(
+            serializer.save(
                 evaluator=evaluator,
                 evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
             )
+
 
     @action(detail=False, methods=['get'])
     def my_evaluations(self, request):
@@ -243,84 +246,95 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             'received': KPIEvaluationSerializer(received_evaluations, many=True).data
         })
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='dashboard-tasks')
     def kpi_dashboard_tasks(self, request):
-        user = self.request.user
-        
-        # Top management taskları istisna edilir
-        user_completed_tasks = Task.objects.filter(
-            assignee=user, 
-            status='DONE'
-        ).exclude(assignee__role='top_management')
-        
-        subordinates = self.get_user_subordinates(user)
-        subordinate_tasks = Task.objects.filter(
-            assignee__in=subordinates, 
-            status='DONE'
-        ).exclude(assignee__role='top_management')
-        
-        all_tasks = user_completed_tasks.union(subordinate_tasks).order_by('-created_at')
-        
-        all_tasks = all_tasks.select_related('assignee', 'created_by').prefetch_related(
-            'evaluations__evaluator', 'evaluations__evaluatee'
-        )
+        """
+        Kullanıcının kendisinin ve hiyerarşik olarak altındaki herkesin 
+        tamamlanmış görevlerini ve bunların değerlendirme durumlarını listeler.
+        """
+        user = request.user
+        tasks_to_show = Q(assignee=user)
 
-        return Response(TaskSerializer(all_tasks, many=True).data)
+        role_hierarchy = ["employee", "manager", "department_lead", "top_management", "admin"]
+        try:
+            user_level = role_hierarchy.index(user.role)
+            subordinate_roles = role_hierarchy[:user_level]
+            
+            # Departman filtresi (Admin ve Top Management hariç)
+            if user.role in ['department_lead', 'manager']:
+                tasks_to_show |= Q(assignee__role__in=subordinate_roles, assignee__department=user.department)
+            elif user.role in ['admin', 'top_management']:
+                 tasks_to_show |= Q(assignee__role__in=subordinate_roles)
 
-    @action(detail=False, methods=['get'])
+        except (ValueError, AttributeError):
+            pass
+
+        queryset = Task.objects.filter(
+            tasks_to_show, status='DONE'
+        ).exclude(assignee__role='top_management').select_related(
+            'assignee', 'created_by'
+        ).prefetch_related(
+            'evaluations'
+        ).distinct().order_by('-completed_at', '-created_at')
+        
+        # Sayfalama uygula
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = TaskSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = TaskSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='pending-for-me')
     def my_subordinates_pending_evaluations(self, request):
         """
-        Sadəcə birbaşa tabeliyimdəkilərin gözləyən dəyərləndirmələri
+        Mevcut kullanıcının (amir) değerlendirmesini bekleyen görevleri listeler.
+        Bu, çalışanın öz değerlendirmesini yaptığı ancak amirin henüz değerlendirmediği görevlerdir.
         """
         user = request.user
         
-        # Birbaşa tabeliyindəkiləri tapır
-        direct_subordinates = []
-        
+        # Doğrudan astlarımı buluyorum
+        subordinates = User.objects.filter(is_active=True).exclude(pk=user.pk)
+        my_direct_subordinates_ids = [
+            sub.id for sub in subordinates if sub.get_direct_superior() == user
+        ]
+
+        if not my_direct_subordinates_ids and user.role != 'admin':
+            return Response([])
+
+        # Admin tüm bekleyenleri görür (öz değerlendirme yapılmış olanlar)
         if user.role == 'admin':
-            direct_subordinates = User.objects.exclude(role='top_management')
+            pending_tasks_q = Q(status='DONE')
         else:
-            # Bütün aktiv işçiləri tapır və onların birbaşa rəhbəri mən olanlari filterləyir
-            potential_subordinates = User.objects.filter(
-                is_active=True
-            ).exclude(role='top_management').exclude(id=user.id)
-            
-            for subordinate in potential_subordinates:
-                direct_superior = self.get_direct_superior(subordinate)
-                if direct_superior and direct_superior.id == user.id:
-                    direct_subordinates.append(subordinate)
-        
-        pending = []
-        
-        tasks_with_evaluations = Task.objects.filter(
-            status='DONE',
-            assignee__in=direct_subordinates
+            pending_tasks_q = Q(status='DONE', assignee_id__in=my_direct_subordinates_ids)
+
+        # Alt sorgu: Bu görev için bir 'SELF' değerlendirme var mı?
+        self_eval_exists = KPIEvaluation.objects.filter(
+            task=OuterRef('pk'),
+            evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+        )
+        # Alt sorgu: Bu görev için BENİM tarafımdan yapılmış bir 'SUPERIOR' değerlendirme var mı?
+        my_superior_eval_exists = KPIEvaluation.objects.filter(
+            task=OuterRef('pk'),
+            evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION,
+            evaluator=user
+        )
+
+        pending_for_me = Task.objects.annotate(
+            has_self_eval=Exists(self_eval_exists),
+            has_my_superior_eval=Exists(my_superior_eval_exists)
+        ).filter(
+            pending_tasks_q,
+            has_self_eval=True,
+            has_my_superior_eval=False # Benim değerlendirmem yok
         ).exclude(
             assignee__role='top_management'
-        ).select_related('assignee').prefetch_related(
-            Prefetch('evaluations', queryset=KPIEvaluation.objects.all(), to_attr='cached_evaluations')
-        )
-        
-        for task in tasks_with_evaluations:
-            evaluations = task.cached_evaluations
-            has_self_eval = any(e.evaluation_type == 'SELF' for e in evaluations)
-            has_my_superior_eval = any(
-                e.evaluation_type == 'SUPERIOR' and e.evaluator == user for e in evaluations
-            )
+        ).select_related('assignee')
 
-            # Öz dəyərləndirmə tamamlanıb və mənim dəyərləndirməm yoxdur
-            if (has_self_eval or user.role == 'admin') and not has_my_superior_eval:
-                pending.append({
-                    'task': TaskSerializer(task).data,
-                    'evaluatee': {
-                        'id': task.assignee.id,
-                        'username': task.assignee.username,
-                        'full_name': task.assignee.get_full_name(),
-                        'role': task.assignee.role
-                    }
-                })
+        serializer = TaskSerializer(pending_for_me, many=True)
+        return Response(serializer.data)
         
-        return Response(pending)
         
     @action(detail=False, methods=['get'])
     def task_evaluations(self, request):

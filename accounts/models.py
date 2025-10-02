@@ -111,4 +111,41 @@ class User(AbstractUser):
         
         # Employees or other roles cannot assign tasks.
         return User.objects.none()
-    
+
+    def get_direct_superior(self):
+        """
+        Kullanıcının departman hiyerarşisindeki doğrudan (bir üst) amirini döndürür.
+        - Employee -> Manager -> Department Lead -> Top Management
+        - Manager -> Department Lead -> Top Management
+        - Department Lead -> Top Management
+        """
+        if self.role == "top_management" or self.role == "admin":
+            return None
+
+        if self.role == "employee":
+            if self.department:
+                # 1. Öncelik: Aynı departmandaki Manager
+                manager = self.department.employees.filter(role="manager", is_active=True).first()
+                if manager:
+                    return manager
+                # 2. Öncelik: Aynı departmandaki Department Lead
+                lead = self.department.employees.filter(role="department_lead", is_active=True).first()
+                if lead:
+                    return lead
+            # 3. Öncelik: Departman bağımsız Top Management
+            return User.objects.filter(role="top_management", is_active=True).first()
+
+        if self.role == "manager":
+            if self.department:
+                # 1. Öncelik: Aynı departmandaki Department Lead
+                lead = self.department.employees.filter(role="department_lead", is_active=True).first()
+                if lead:
+                    return lead
+            # 2. Öncelik: Departman bağımsız Top Management
+            return User.objects.filter(role="top_management", is_active=True).first()
+
+        if self.role == "department_lead":
+            # Tek öncelik: Top Management
+            return User.objects.filter(role="top_management", is_active=True).first()
+
+        return None
