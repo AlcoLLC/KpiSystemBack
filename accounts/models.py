@@ -111,3 +111,4 @@ class User(AbstractUser):
         
         # Employees or other roles cannot assign tasks.
         return User.objects.none()
+    
