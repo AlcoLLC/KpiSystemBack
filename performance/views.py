@@ -16,9 +16,7 @@ def get_user_subordinates(user):
     if user.role in ['admin', 'top_management']:
         return User.objects.filter(is_active=True).exclude(pk=user.pk)
     
-    # Department Lead-lər öz departamentlərindəki menecer və işçiləri görürlər
     if user.role == 'department_lead':
-        # `led_department` əlaqəsinə əsaslanaraq departamenti tapırıq
         if hasattr(user, 'led_department'):
             return User.objects.filter(
                 department=user.led_department,
@@ -26,9 +24,7 @@ def get_user_subordinates(user):
                 is_active=True
             )
     
-    # Menecerlər öz departamentlərindəki işçiləri görürlər
     if user.role == 'manager':
-        # `managed_department` əlaqəsinə əsaslanaraq departamenti tapırıq
         if hasattr(user, 'managed_department'):
             return User.objects.filter(
                 department=user.managed_department,
@@ -46,17 +42,14 @@ class SubordinateListView(APIView):
     def get(self, request, *args, **kwargs):
         user = request.user
         
-        # `get_user_subordinates` yardımçı funksiyasını çağırırıq
         subordinates = get_user_subordinates(user)
 
-        # Axtarış (search)
         search_query = request.query_params.get('search', None)
         if search_query:
             subordinates = subordinates.filter(
                 Q(first_name__icontains=search_query) | Q(last_name__icontains=search_query)
             )
         
-        # Departamentə görə filter
         department_id = request.query_params.get('department', None)
         if department_id:
             subordinates = subordinates.filter(department__id=department_id)
