@@ -2,7 +2,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from django.db.models import Q, Prefetch
+from django.db.models import Q, Exists, OuterRef
 from .models import KPIEvaluation
 from .serializers import KPIEvaluationSerializer
 from .utils import send_kpi_evaluation_request_email
