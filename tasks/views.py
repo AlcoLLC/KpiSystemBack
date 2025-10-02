@@ -130,10 +130,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         if assignee.role not in allowed_roles:
             raise PermissionDenied(f"{creator.get_role_display()} can only assign tasks to specific roles.")
 
-        if creator.role in ["admin", "top_management"]:
-            task = serializer.save(created_by=creator, approved=True, status="TODO")
-        else:
-            task = serializer.save(created_by=creator, approved=False, status="PENDING")
+        task = serializer.save(created_by=creator, approved=True, status="TODO")
         
         send_task_notification_email(task, notification_type="new_assignment")
 
