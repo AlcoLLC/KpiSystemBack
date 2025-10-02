@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 def send_kpi_evaluation_request_email(kpi_evaluation):
     evaluatee = kpi_evaluation.evaluatee
     task = kpi_evaluation.task
-    superior = evaluatee.get_superior()
+    superior = evaluatee.get_direct_superior()
 
     if not superior:
         logger.warning(f"ID {evaluatee.id} olan istifadəçinin rəhbəri tapılmadı. KPI e-poçtu göndərilmədi.")
