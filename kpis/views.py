@@ -1,4 +1,3 @@
-# kpis/views.py
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -33,6 +32,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
     def get_direct_superior(self, employee):
         """
         İşçinin birbaşa rəhbərini tapır (departament əsasında hiyerarxik)
+        Əgər eyni departamentdə birbaşa rəhbər yoxdursa, bir üst səviyyədə axtarır
         """
         if not employee.department:
             return None
@@ -56,7 +56,15 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                 department=employee.department,
                 is_active=True
             ).first()
-            return dept_lead
+            if dept_lead:
+                return dept_lead
+            
+            # Department lead də yoxdursa top_management axtarır
+            top_mgmt = User.objects.filter(
+                role='top_management',
+                is_active=True
+            ).first()
+            return top_mgmt
             
         elif employee.role == 'manager':
             # Manager-in rəhbəri department_lead-dir
@@ -65,7 +73,15 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                 department=employee.department,
                 is_active=True
             ).first()
-            return dept_lead
+            if dept_lead:
+                return dept_lead
+            
+            # Department lead yoxdursa top_management
+            top_mgmt = User.objects.filter(
+                role='top_management',
+                is_active=True
+            ).first()
+            return top_mgmt
             
         elif employee.role == 'department_lead':
             # Department lead-in rəhbəri top_management-dir
@@ -79,24 +95,29 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
     def can_evaluate_user(self, evaluator, evaluatee):
         """
-        Sadəcə birbaşa rəhbər dəyərləndirə bilər (və admin)
+        Sadəcə birbaşa rəhbər dəyərləndirə bilər
         """
         if evaluator == evaluatee:
             return False
             
-        if evaluator.role == 'admin':
-            return evaluatee.role != 'top_management'  # Admin top management dəyərləndirə bilməz
-        
         if evaluatee.role == 'top_management':
             return False  # Top management dəyərləndirmə olunmur
             
         # Birbaşa rəhbər yoxlaması
         direct_superior = self.get_direct_superior(evaluatee)
+        
+        # Admin istisna halda dəyərləndirə bilər (top_management istisna)
+        if evaluator.role == 'admin' and evaluatee.role != 'top_management':
+            return True
+            
         return direct_superior and direct_superior.id == evaluator.id
 
     def can_view_evaluation_results(self, viewer, evaluatee):
         """
-        Dəyərləndirmə nəticələrini kimler görə bilər
+        Dəyərləndirmə nəticələrini kimler görə bilər:
+        - Özü
+        - Admin
+        - Bütün üst rollarda olanlar (birbaşa rəhbərdən yuxarı hiyerarxiyada)
         """
         if viewer == evaluatee:
             return True  # Özünün nəticəsini görə bilər
@@ -107,19 +128,25 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         if evaluatee.role == 'top_management':
             return False  # Top management nəticələri görünmür
             
-        # Birbaşa rəhbər və ya daha yüksək səviyyədə olanlar görə bilər
+        # Top management hər şeyi görə bilər
         if viewer.role == 'top_management':
             return True
             
-        if (viewer.role == 'department_lead' and 
-            evaluatee.department == viewer.department and
-            evaluatee.role in ['manager', 'employee']):
-            return True
-            
-        if (viewer.role == 'manager' and 
-            evaluatee.department == viewer.department and
-            evaluatee.role == 'employee'):
-            return True
+        # Department lead öz departamentindəki manager və employee-ləri görə bilər
+        if viewer.role == 'department_lead':
+            if evaluatee.department == viewer.department and evaluatee.role in ['manager', 'employee']:
+                return True
+            # Digər departamentlərdəki department lead-ləri də görə bilər
+            if evaluatee.role == 'department_lead':
+                return True
+                
+        # Manager öz departamentindəki employee-ləri görə bilər
+        if viewer.role == 'manager':
+            if evaluatee.department == viewer.department and evaluatee.role == 'employee':
+                return True
+            # Digər departamentlərdəki manager və employee-ləri də görə bilər
+            if evaluatee.role in ['manager', 'employee']:
+                return True
             
         return False
 
@@ -249,22 +276,19 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         
         # Birbaşa tabeliyindəkiləri tapır
         direct_subordinates = []
+        
         if user.role == 'admin':
             direct_subordinates = User.objects.exclude(role='top_management')
-        elif user.role == 'top_management':
-            direct_subordinates = User.objects.filter(role='department_lead', is_active=True)
-        elif user.role == 'department_lead':
-            direct_subordinates = User.objects.filter(
-                department=user.department,
-                role='manager',
+        else:
+            # Bütün aktiv işçiləri tapır və onların birbaşa rəhbəri mən olanlari filterləyir
+            potential_subordinates = User.objects.filter(
                 is_active=True
-            )
-        elif user.role == 'manager':
-            direct_subordinates = User.objects.filter(
-                department=user.department,
-                role='employee',
-                is_active=True
-            )
+            ).exclude(role='top_management').exclude(id=user.id)
+            
+            for subordinate in potential_subordinates:
+                direct_superior = self.get_direct_superior(subordinate)
+                if direct_superior and direct_superior.id == user.id:
+                    direct_subordinates.append(subordinate)
         
         pending = []
         
@@ -272,7 +296,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             status='DONE',
             assignee__in=direct_subordinates
         ).exclude(
-            assignee__role='top_management'  # Top management istisnaları
+            assignee__role='top_management'
         ).select_related('assignee').prefetch_related(
             Prefetch('evaluations', queryset=KPIEvaluation.objects.all(), to_attr='cached_evaluations')
         )
