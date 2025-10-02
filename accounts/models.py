@@ -1,5 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.utils.text import slugify
+import itertools
 
 class Department(models.Model):
     name = models.CharField(max_length=255)
@@ -41,9 +43,24 @@ class User(AbstractUser):
         blank=True, 
         related_name='employees'
     )
+    slug = models.SlugField(unique=True, max_length=255, blank=True, null=True)
 
+    
     def __str__(self):
-        return f"{self.first_name} {self.last_name}  "
+        return f"{self.first_name} {self.last_name}"
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(f"{self.first_name}-{self.last_name}") or slugify(self.username)
+            slug = base_slug
+
+            for i in itertools.count(1):
+                if not User.objects.filter(slug=slug).exists():
+                    break
+                slug = f'{base_slug}-{i}'
+            self.slug = slug
+        super().save(*args, **kwargs)
+
 
     @property
     def assigner_role(self):
