@@ -68,8 +68,17 @@ class PerformanceSummaryView(APIView):
             return Response({"detail": "İstifadəçi tapılmadı."}, status=status.HTTP_404_NOT_FOUND)
 
         all_tasks = Task.objects.filter(assignee=target_user)
-        completed_tasks = all_tasks.filter(status='DONE')
         
+        # Statusa görə bölgü
+        status_distribution = all_tasks.values('status').annotate(count=Count('status'))
+        status_data = {s['status']: s['count'] for s in status_distribution}
+
+        # Prioritetə görə bölgü
+        priority_distribution = all_tasks.values('priority').annotate(count=Count('priority'))
+        priority_data = {p['priority']: p['count'] for p in priority_distribution}
+
+        # Digər hesablamalar
+        completed_tasks = all_tasks.filter(status='DONE')
         today = timezone.now().date()
         overdue_tasks_count = all_tasks.filter(
             due_date__lt=today, 
@@ -84,9 +93,13 @@ class PerformanceSummaryView(APIView):
         summary_data = {
             "user": SubordinateSerializer(target_user).data,
             "task_performance": {
+                "total_tasks": all_tasks.count(),
                 "completed_count": completed_tasks.count(),
                 "overdue_count": overdue_tasks_count,
+                "in_progress_count": status_data.get('IN_PROGRESS', 0),
                 "completion_rate": completion_rate,
+                "status_distribution": status_data,
+                "priority_distribution": priority_data,
             },
             "kpi_performance": None
         }
