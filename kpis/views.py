@@ -40,153 +40,18 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         # Astlarının değerlendirmeleri (Rol bazlı)
         subordinate_evaluations = Q(evaluatee__role__in=allowed_roles_to_view)
 
+        # Departman bazlı filtreleme
+        if user.role in ['department_lead', 'manager']:
+            subordinate_evaluations &= Q(evaluatee__department=user.department)
+
         return self.queryset.filter(own_evaluations | subordinate_evaluations).distinct().select_related('task', 'evaluator', 'evaluatee')
 
-
-    def get_direct_superior(self, employee):
-        """
-        İşçinin birbaşa rəhbərini tapır (departament əsasında hiyerarxik)
-        Əgər eyni departamentdə birbaşa rəhbər yoxdursa, bir üst səviyyədə axtarır
-        """
-        if not employee.department:
-            return None
-            
-        if employee.role == 'top_management':
-            return None  # Top management-in rəhbəri yoxdur
-            
-        if employee.role == 'employee':
-            # Əvvəlcə eyni departamentdə manager axtarır
-            manager = User.objects.filter(
-                role='manager', 
-                department=employee.department,
-                is_active=True
-            ).first()
-            if manager:
-                return manager
-                
-            # Manager yoxdursa department_lead axtarır
-            dept_lead = User.objects.filter(
-                role='department_lead', 
-                department=employee.department,
-                is_active=True
-            ).first()
-            if dept_lead:
-                return dept_lead
-            
-            # Department lead də yoxdursa top_management axtarır
-            top_mgmt = User.objects.filter(
-                role='top_management',
-                is_active=True
-            ).first()
-            return top_mgmt
-            
-        elif employee.role == 'manager':
-            # Manager-in rəhbəri department_lead-dir
-            dept_lead = User.objects.filter(
-                role='department_lead', 
-                department=employee.department,
-                is_active=True
-            ).first()
-            if dept_lead:
-                return dept_lead
-            
-            # Department lead yoxdursa top_management
-            top_mgmt = User.objects.filter(
-                role='top_management',
-                is_active=True
-            ).first()
-            return top_mgmt
-            
-        elif employee.role == 'department_lead':
-            # Department lead-in rəhbəri top_management-dir
-            top_mgmt = User.objects.filter(
-                role='top_management',
-                is_active=True
-            ).first()
-            return top_mgmt
-            
-        return None
-
-    def can_evaluate_user(self, evaluator, evaluatee):
-        """
-        Sadəcə birbaşa rəhbər dəyərləndirə bilər
-        """
-        if evaluator == evaluatee:
-            return False
-            
-        if evaluatee.role == 'top_management':
-            return False  # Top management dəyərləndirmə olunmur
-            
-        # Birbaşa rəhbər yoxlaması
-        direct_superior = self.get_direct_superior(evaluatee)
-        
-        # Admin istisna halda dəyərləndirə bilər (top_management istisna)
-        if evaluator.role == 'admin' and evaluatee.role != 'top_management':
-            return True
-            
-        return direct_superior and direct_superior.id == evaluator.id
-
-    def can_view_evaluation_results(self, viewer, evaluatee):
-        """
-        Dəyərləndirmə nəticələrini kimler görə bilər:
-        - Özü
-        - Admin
-        - Bütün üst rollarda olanlar (birbaşa rəhbərdən yuxarı hiyerarxiyada)
-        """
-        if viewer == evaluatee:
-            return True  # Özünün nəticəsini görə bilər
-            
-        if viewer.role == 'admin':
-            return True
-            
-        if evaluatee.role == 'top_management':
-            return False  # Top management nəticələri görünmür
-            
-        # Top management hər şeyi görə bilər
-        if viewer.role == 'top_management':
-            return True
-            
-        # Department lead öz departamentindəki manager və employee-ləri görə bilər
-        if viewer.role == 'department_lead':
-            if evaluatee.department == viewer.department and evaluatee.role in ['manager', 'employee']:
-                return True
-            # Digər departamentlərdəki department lead-ləri də görə bilər
-            if evaluatee.role == 'department_lead':
-                return True
-                
-        # Manager öz departamentindəki employee-ləri görə bilər
-        if viewer.role == 'manager':
-            if evaluatee.department == viewer.department and evaluatee.role == 'employee':
-                return True
-            # Digər departamentlərdəki manager və employee-ləri də görə bilər
-            if evaluatee.role in ['manager', 'employee']:
-                return True
-            
-        return False
-
-    def get_user_subordinates(self, user):
-        """
-        User-in görə biləcəyi işçiləri qaytarır
-        """
-        if user.role == 'admin':
-            return User.objects.exclude(role='top_management')
-        
-        if user.role == 'top_management':
-            return User.objects.exclude(role='top_management')
-            
-        if user.role == 'department_lead':
-            return User.objects.filter(
-                department=user.department,
-                role__in=['manager', 'employee']
-            )
-            
-        if user.role == 'manager':
-            return User.objects.filter(
-                department=user.department,
-                role='employee'
-            )
-        
-        return User.objects.none()
+    # ------------------ KALDIRILAN METODLAR ------------------
+    # Bu ViewSet içindeki get_direct_superior, can_evaluate_user, 
+    # can_view_evaluation_results ve get_user_subordinates metodları kaldırıldı.
+    # Çünkü bu mantıklar ya doğrudan User modelindeki metodlarla ya da
+    # DRF'in kendi permission sistemiyle daha temiz yönetilebilir.
+    # ---------------------------------------------------------
 
     def perform_create(self, serializer):
         evaluator = self.request.user
@@ -212,16 +77,19 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         
         # Üst Değerlendirme Mantığı
         else:
+            # === DEĞİŞİKLİK BURADA ===
+            # User modelindeki get_direct_superior metodu ile doğru amiri buluyoruz.
+            # Bu metod, istediğiniz fallback mantığını (manager->lead->top_management) zaten içeriyor.
             direct_superior = evaluatee.get_direct_superior()
             
             # Sadece DOĞRUDAN amir veya admin değerlendirme yapabilir
-            if not (direct_superior and direct_superior == evaluator) and not evaluator.role == 'admin':
-                raise PermissionDenied("Bu kullanıcıyı değerlendirme yetkiniz yok. Sadece doğrudan amir değerlendirme yapabilir.")
+            if not (direct_superior and direct_superior == evaluator) and not evaluator.is_staff:
+                raise PermissionDenied("Bu kullanıcıyı değerlendirme yetkiniz yok. Sadece doğrudan amir veya yönetici değerlendirme yapabilir.")
 
             # Üst değerlendirme için önce öz değerlendirme yapılmalı (admin hariç)
             if not KPIEvaluation.objects.filter(
                 task=task, evaluatee=evaluatee, evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
-            ).exists() and evaluator.role != 'admin':
+            ).exists() and not evaluator.is_staff:
                 raise ValidationError("Üst değerlendirme yapmadan önce çalışanın öz değerlendirmesini tamamlaması gerekir.")
 
             if KPIEvaluation.objects.filter(
@@ -233,7 +101,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                 evaluator=evaluator,
                 evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
             )
-
 
     @action(detail=False, methods=['get'])
     def my_evaluations(self, request):
@@ -249,26 +116,18 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='dashboard-tasks')
     def kpi_dashboard_tasks(self, request):
-        """
-        Kullanıcının kendisinin ve hiyerarşik olarak altındaki herkesin 
-        tamamlanmış görevlerini ve bunların değerlendirme durumlarını listeler.
-        """
         user = request.user
         tasks_to_show = Q(assignee=user)
 
-        role_hierarchy = ["employee", "manager", "department_lead", "top_management", "admin"]
-        try:
-            user_level = role_hierarchy.index(user.role)
-            subordinate_roles = role_hierarchy[:user_level]
-            
-            # Departman filtresi (Admin ve Top Management hariç)
-            if user.role in ['department_lead', 'manager']:
-                tasks_to_show |= Q(assignee__role__in=subordinate_roles, assignee__department=user.department)
-            elif user.role in ['admin', 'top_management']:
-                 tasks_to_show |= Q(assignee__role__in=subordinate_roles)
-
-        except (ValueError, AttributeError):
-            pass
+        # Admin ve Top Management herkesi görür
+        if user.is_staff or user.role == 'top_management':
+            tasks_to_show |= Q() # Hepsini dahil et
+        # Department Lead, kendi departmanındaki manager ve employee'leri görür
+        elif user.role == 'department_lead':
+             tasks_to_show |= Q(assignee__department=user.department, assignee__role__in=['manager', 'employee'])
+        # Manager, kendi departmanındaki employee'leri görür
+        elif user.role == 'manager':
+            tasks_to_show |= Q(assignee__department=user.department, assignee__role='employee')
 
         queryset = Task.objects.filter(
             tasks_to_show, status='DONE'
@@ -278,13 +137,12 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             'evaluations'
         ).distinct().order_by('-completed_at', '-created_at')
         
-        # Sayfalama uygula
         page = self.paginate_queryset(queryset)
         if page is not None:
-            serializer = TaskSerializer(page, many=True)
+            serializer = TaskSerializer(page, many=True, context={'request': request})
             return self.get_paginated_response(serializer.data)
 
-        serializer = TaskSerializer(queryset, many=True)
+        serializer = TaskSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='pending-for-me')
@@ -295,27 +153,29 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         """
         user = request.user
         
-        # Doğrudan astlarımı buluyorum
-        subordinates = User.objects.filter(is_active=True).exclude(pk=user.pk)
+        # === DEĞİŞİKLİK BURADA ===
+        # Bütün aktif kullanıcıları alıp, `get_direct_superior` metodu bizim mevcut
+        # kullanıcımızı döndürüyorsa, o kişi bizim doğrudan astımızdır (fallback dahil).
+        all_active_users = User.objects.filter(is_active=True).exclude(pk=user.pk)
+        
         my_direct_subordinates_ids = [
-            sub.id for sub in subordinates if sub.get_direct_superior() == user
+            subordinate.id 
+            for subordinate in all_active_users 
+            if subordinate.get_direct_superior() == user
         ]
-
-        if not my_direct_subordinates_ids and user.role != 'admin':
-            return Response([])
-
-        # Admin tüm bekleyenleri görür (öz değerlendirme yapılmış olanlar)
-        if user.role == 'admin':
+        
+        # Eğer admin ise, değerlendirmesi gereken herkesi listeye dahil et
+        if user.is_staff:
             pending_tasks_q = Q(status='DONE')
+        elif not my_direct_subordinates_ids:
+            return Response([])
         else:
             pending_tasks_q = Q(status='DONE', assignee_id__in=my_direct_subordinates_ids)
 
-        # Alt sorgu: Bu görev için bir 'SELF' değerlendirme var mı?
         self_eval_exists = KPIEvaluation.objects.filter(
             task=OuterRef('pk'),
             evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
         )
-        # Alt sorgu: Bu görev için BENİM tarafımdan yapılmış bir 'SUPERIOR' değerlendirme var mı?
         my_superior_eval_exists = KPIEvaluation.objects.filter(
             task=OuterRef('pk'),
             evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION,
@@ -328,31 +188,34 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         ).filter(
             pending_tasks_q,
             has_self_eval=True,
-            has_my_superior_eval=False # Benim değerlendirmem yok
+            has_my_superior_eval=False
         ).exclude(
             assignee__role='top_management'
         ).select_related('assignee')
 
         serializer = TaskSerializer(pending_for_me, many=True)
         return Response(serializer.data)
-        
-        
+    
     @action(detail=False, methods=['get'])
     def task_evaluations(self, request):
         task_id = request.query_params.get('task_id')
         if not task_id:
-            return Response({'error': 'task_id parametri tələb olunur'}, 
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'task_id parametri tələb olunur'}, status=status.HTTP_400_BAD_REQUEST)
         
-        evaluations = self.get_queryset().filter(task_id=task_id)
-        
+        try:
+            task = Task.objects.get(pk=task_id)
+            evaluatee = task.assignee
+        except Task.DoesNotExist:
+            return Response({'error': 'Tapşırıq tapılmadı'}, status=status.HTTP_404_NOT_FOUND)
+
         # Görmə icazəsi yoxlaması
-        filtered_evaluations = []
-        for evaluation in evaluations:
-            if self.can_view_evaluation_results(self.request.user, evaluation.evaluatee):
-                filtered_evaluations.append(evaluation)
-        
-        return Response(KPIEvaluationSerializer(filtered_evaluations, many=True).data)
+        # Basit bir kontrol: Admin, değerlendiren, değerlendirilen veya değerlendirilenin amiri görebilir.
+        superior = evaluatee.get_direct_superior()
+        if not (request.user.is_staff or request.user == evaluatee or request.user == superior):
+             raise PermissionDenied("Bu dəyərləndirmə nəticələrini görməyə icazəniz yoxdur.")
+
+        evaluations = self.get_queryset().filter(task_id=task_id)
+        return Response(KPIEvaluationSerializer(evaluations, many=True).data)
 
     @action(detail=False, methods=['get'])
     def evaluation_summary(self, request):
@@ -360,33 +223,21 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         evaluatee_id = request.query_params.get('evaluatee_id')
         
         if not task_id or not evaluatee_id:
-            return Response({
-                'error': 'task_id və evaluatee_id parametrləri tələb olunur'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'task_id və evaluatee_id parametrləri tələb olunur'}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
             evaluatee = User.objects.get(id=evaluatee_id)
         except User.DoesNotExist:
             return Response({'error': 'İşçi tapılmadı'}, status=status.HTTP_404_NOT_FOUND)
         
-        # Görmə icazəsi yoxlaması
-        if not self.can_view_evaluation_results(request.user, evaluatee):
-            return Response({
-                'error': 'Bu dəyərləndirmə nəticələrini görmə icazəniz yoxdur'
-            }, status=status.HTTP_403_FORBIDDEN)
+        superior = evaluatee.get_direct_superior()
+        if not (request.user.is_staff or request.user == evaluatee or request.user == superior):
+            raise PermissionDenied("Bu dəyərləndirmə nəticələrini görməyə icazəniz yoxdur.")
         
-        evaluations = KPIEvaluation.objects.filter(
-            task_id=task_id,
-            evaluatee_id=evaluatee_id
-        ).select_related('task', 'evaluator', 'evaluatee')
+        evaluations = KPIEvaluation.objects.filter(task_id=task_id, evaluatee_id=evaluatee_id)
         
-        self_evaluation = evaluations.filter(
-            evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
-        ).first()
-        
-        superior_evaluation = evaluations.filter(
-            evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
-        ).first()
+        self_evaluation = evaluations.filter(evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION).first()
+        superior_evaluation = evaluations.filter(evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION).first()
         
         summary = {
             'task_id': task_id,
@@ -405,16 +256,12 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         new_score = request.data.get('score')
         new_comment = request.data.get('comment')
 
-        # --- PERMISSION CHECKS ---
-        is_self_eval = instance.evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION
-        is_superior_eval = instance.evaluation_type == KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
-
         # Rule: Only the original evaluator can edit their evaluation.
         if instance.evaluator != user:
             raise PermissionDenied("Yalnız dəyərləndirməni yaradan şəxs redaktə edə bilər.")
 
         # Rule: Self-evaluation can only be edited if a superior has not yet evaluated it.
-        if is_self_eval:
+        if instance.evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION:
             superior_eval_exists = KPIEvaluation.objects.filter(
                 task=instance.task,
                 evaluatee=instance.evaluatee,
@@ -423,27 +270,23 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             if superior_eval_exists:
                 raise PermissionDenied("Rəhbər dəyərləndirməsi edildikdən sonra öz dəyərləndirmənizi redaktə edə bilməzsiniz.")
 
-        # --- UPDATE LOGIC AND HISTORY LOGGING ---
         old_score = None
         
         if new_score is not None:
             try:
                 new_score = int(new_score)
-                # Determine which score field to update and get the old value
-                if is_self_eval:
+                if instance.evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION:
                     old_score = instance.self_score
                     instance.self_score = new_score
-                elif is_superior_eval:
+                else: # SUPERIOR_EVALUATION
                     old_score = instance.superior_score
                     instance.superior_score = new_score
             except (ValueError, TypeError):
-                 raise ValidationError({"score": "Düzgün bir rəqəm daxil edin."})
+                raise ValidationError({"score": "Düzgün bir rəqəm daxil edin."})
 
-        # Update comment if provided
         if new_comment is not None:
             instance.comment = new_comment
 
-        # Create a history entry only if the score has actually changed
         if old_score is not None and old_score != new_score:
             history_entry = {
                 "timestamp": datetime.now().isoformat(),
@@ -452,12 +295,10 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                 "previous_score": old_score,
                 "new_score": new_score
             }
-            # Ensure history is a list before appending
             if not isinstance(instance.history, list):
                 instance.history = []
             instance.history.append(history_entry)
 
-        # Record the user who made the update
         instance.updated_by = user
         instance.save()
 
