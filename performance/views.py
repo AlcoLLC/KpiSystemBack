@@ -56,50 +56,64 @@ class SubordinateListView(APIView):
 
         serializer = SubordinateSerializer(subordinates, many=True)
         return Response(serializer.data)
-
+    
+    
 class PerformanceSummaryView(APIView):
-    """Seçilmiş istifadəçinin tapşırıq performansını hesablayır."""
+    """Calculates and returns detailed task performance for a selected user."""
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request, slug, *args, **kwargs):
-        try:
-            target_user = User.objects.get(slug=slug)
-        except User.DoesNotExist:
-            return Response({"detail": "İstifadəçi tapılmadı."}, status=status.HTTP_404_NOT_FOUND)
+    def get(self, request, slug=None, *args, **kwargs):
+        # If slug is not provided, use the logged-in user
+        if not slug:
+            target_user = request.user
+        else:
+            try:
+                target_user = User.objects.get(slug=slug)
+            except User.DoesNotExist:
+                return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
+        # Basic task sets
         all_tasks = Task.objects.filter(assignee=target_user)
-        
-        # Statusa görə bölgü
-        status_distribution = all_tasks.values('status').annotate(count=Count('status'))
-        status_data = {s['status']: s['count'] for s in status_distribution}
+        done_tasks = all_tasks.filter(status='DONE')
+        active_tasks = all_tasks.filter(status__in=['TODO', 'IN_PROGRESS'])
 
-        # Prioritetə görə bölgü
-        priority_distribution = all_tasks.values('priority').annotate(count=Count('priority'))
-        priority_data = {p['priority']: p['count'] for p in priority_distribution}
-
-        # Digər hesablamalar
-        completed_tasks = all_tasks.filter(status='DONE')
+        # Performance Metrics Calculation
         today = timezone.now().date()
-        overdue_tasks_count = all_tasks.filter(
+        completed_count = done_tasks.count()
+        
+        # Overdue are tasks past their due_date that are not DONE or CANCELLED
+        overdue_count = all_tasks.filter(
             due_date__lt=today, 
             status__in=['PENDING', 'TODO', 'IN_PROGRESS']
         ).count()
-        
-        total_finished_count = completed_tasks.count() + overdue_tasks_count
-        completion_rate = 0
-        if total_finished_count > 0:
-            completion_rate = round((completed_tasks.count() / total_finished_count) * 100, 1)
 
+        # On-time completion rate
+        on_time_completed_count = done_tasks.filter(completed_at__date__lte=F('due_date')).count()
+        total_completed = completed_count
+        on_time_rate = (on_time_completed_count / total_completed * 100) if total_completed > 0 else 0
+
+        # Average completion time (in days)
+        avg_time_days = done_tasks.annotate(
+            completion_duration=Func(F('completed_at') - F('created_at'), function='AGE')
+        ).aggregate(
+            avg_duration=Avg('completion_duration')
+        )['avg_duration']
+        
+        avg_time_str = f"{avg_time_days.days} gün" if avg_time_days else "N/A"
+        
+        # Priority breakdown for active tasks
+        priority_breakdown = active_tasks.values('priority').annotate(count=Count('id'))
+        
         summary_data = {
             "user": SubordinateSerializer(target_user).data,
             "task_performance": {
                 "total_tasks": all_tasks.count(),
-                "completed_count": completed_tasks.count(),
-                "overdue_count": overdue_tasks_count,
-                "in_progress_count": status_data.get('IN_PROGRESS', 0),
-                "completion_rate": completion_rate,
-                "status_distribution": status_data,
-                "priority_distribution": priority_data,
+                "completed_count": completed_count,
+                "active_count": active_tasks.count(),
+                "overdue_count": overdue_count,
+                "on_time_rate": round(on_time_rate, 1),
+                "avg_completion_time": avg_time_str,
+                "priority_breakdown": list(priority_breakdown)
             },
             "kpi_performance": None
         }

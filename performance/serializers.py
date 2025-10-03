@@ -9,11 +9,7 @@ class SubordinateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = [
-            "id", "slug", "email", "role", "role_display", "department_name",
-            "first_name", "last_name", "profile_photo", "phone_number", "password"
-        ]
-        read_only_fields = ['role_display', 'department_name']
+        fields = ['id', 'slug', 'profile_photo', 'full_name', 'role', 'department', 'email']
     
     def get_full_name(self, obj):
         return obj.get_full_name() or obj.username
