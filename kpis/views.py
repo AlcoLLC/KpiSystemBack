@@ -9,6 +9,7 @@ from .utils import send_kpi_evaluation_request_email
 from accounts.models import User
 from tasks.models import Task
 from tasks.serializers import TaskSerializer
+from datetime import datetime
 
 
 class KPIEvaluationViewSet(viewsets.ModelViewSet):
@@ -397,3 +398,68 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         }
         
         return Response(summary)
+    
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        user = request.user
+        new_score = request.data.get('score')
+        new_comment = request.data.get('comment')
+
+        # --- PERMISSION CHECKS ---
+        is_self_eval = instance.evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION
+        is_superior_eval = instance.evaluation_type == KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+
+        # Rule: Only the original evaluator can edit their evaluation.
+        if instance.evaluator != user:
+            raise PermissionDenied("Yalnız dəyərləndirməni yaradan şəxs redaktə edə bilər.")
+
+        # Rule: Self-evaluation can only be edited if a superior has not yet evaluated it.
+        if is_self_eval:
+            superior_eval_exists = KPIEvaluation.objects.filter(
+                task=instance.task,
+                evaluatee=instance.evaluatee,
+                evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+            ).exists()
+            if superior_eval_exists:
+                raise PermissionDenied("Rəhbər dəyərləndirməsi edildikdən sonra öz dəyərləndirmənizi redaktə edə bilməzsiniz.")
+
+        # --- UPDATE LOGIC AND HISTORY LOGGING ---
+        old_score = None
+        
+        if new_score is not None:
+            try:
+                new_score = int(new_score)
+                # Determine which score field to update and get the old value
+                if is_self_eval:
+                    old_score = instance.self_score
+                    instance.self_score = new_score
+                elif is_superior_eval:
+                    old_score = instance.superior_score
+                    instance.superior_score = new_score
+            except (ValueError, TypeError):
+                 raise ValidationError({"score": "Düzgün bir rəqəm daxil edin."})
+
+        # Update comment if provided
+        if new_comment is not None:
+            instance.comment = new_comment
+
+        # Create a history entry only if the score has actually changed
+        if old_score is not None and old_score != new_score:
+            history_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "updated_by_id": user.id,
+                "updated_by_name": user.get_full_name() or user.username,
+                "previous_score": old_score,
+                "new_score": new_score
+            }
+            # Ensure history is a list before appending
+            if not isinstance(instance.history, list):
+                instance.history = []
+            instance.history.append(history_entry)
+
+        # Record the user who made the update
+        instance.updated_by = user
+        instance.save()
+
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
