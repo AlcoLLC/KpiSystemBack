@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import permissions, status
 from django.db.models import Count, Q, F, Avg, Func
 from django.utils import timezone
+from django.db.models import Avg, F, Func, Case, When, IntegerField
 from datetime import timedelta
 from accounts.models import User
 from tasks.models import Task
@@ -63,8 +64,8 @@ class PerformanceSummaryView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, slug=None, *args, **kwargs):
-        # If slug is not provided, use the logged-in user
-        if not slug:
+        # DÜZƏLİŞ: slug olmasa, sorğunu göndərən istifadəçini götürür
+        if slug == 'me' or slug is None:
             target_user = request.user
         else:
             try:
@@ -72,38 +73,31 @@ class PerformanceSummaryView(APIView):
             except User.DoesNotExist:
                 return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Basic task sets
+        # İcazə yoxlaması: İstifadəçi özündən yuxarıdakının performansına baxa bilməz (admin xaric)
+        if request.user.role != 'admin' and target_user.role == 'top_management' and request.user != target_user:
+             return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
         all_tasks = Task.objects.filter(assignee=target_user)
         done_tasks = all_tasks.filter(status='DONE')
         active_tasks = all_tasks.filter(status__in=['TODO', 'IN_PROGRESS'])
-
-        # Performance Metrics Calculation
         today = timezone.now().date()
+
+        # Performans göstəricilərinin hesablanması (daha detallı)
         completed_count = done_tasks.count()
-        
-        # Overdue are tasks past their due_date that are not DONE or CANCELLED
         overdue_count = all_tasks.filter(
             due_date__lt=today, 
             status__in=['PENDING', 'TODO', 'IN_PROGRESS']
         ).count()
+        
+        # Vaxtında tamamlama faizi (yalnız bitmə tarixi olanlar üçün)
+        tasks_with_due_date = done_tasks.filter(due_date__isnull=False)
+        on_time_completed_count = tasks_with_due_date.filter(completed_at__date__lte=F('due_date')).count()
+        total_relevant_completed = tasks_with_due_date.count()
+        on_time_rate = (on_time_completed_count / total_relevant_completed * 100) if total_relevant_completed > 0 else 100
 
-        # On-time completion rate
-        on_time_completed_count = done_tasks.filter(completed_at__date__lte=F('due_date')).count()
-        total_completed = completed_count
-        on_time_rate = (on_time_completed_count / total_completed * 100) if total_completed > 0 else 0
+        # Prioritetə görə tamamlanmış tapşırıqlar
+        priority_completion = done_tasks.values('priority').annotate(count=Count('id')).order_by('priority')
 
-        # Average completion time (in days)
-        avg_time_days = done_tasks.annotate(
-            completion_duration=Func(F('completed_at') - F('created_at'), function='AGE')
-        ).aggregate(
-            avg_duration=Avg('completion_duration')
-        )['avg_duration']
-        
-        avg_time_str = f"{avg_time_days.days} gün" if avg_time_days else "N/A"
-        
-        # Priority breakdown for active tasks
-        priority_breakdown = active_tasks.values('priority').annotate(count=Count('id'))
-        
         summary_data = {
             "user": SubordinateSerializer(target_user).data,
             "task_performance": {
@@ -112,10 +106,8 @@ class PerformanceSummaryView(APIView):
                 "active_count": active_tasks.count(),
                 "overdue_count": overdue_count,
                 "on_time_rate": round(on_time_rate, 1),
-                "avg_completion_time": avg_time_str,
-                "priority_breakdown": list(priority_breakdown)
+                "priority_completion": list(priority_completion),
             },
-            "kpi_performance": None
         }
         
         return Response(summary_data)
