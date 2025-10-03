@@ -131,38 +131,49 @@ class User(AbstractUser):
 
     def get_direct_superior(self):
         """
-        Kullanıcının departman hiyerarşisindeki doğrudan (bir üst) amirini döndürür.
-        - Employee -> Manager -> Department Lead -> Top Management
-        - Manager -> Department Lead -> Top Management
-        - Department Lead -> Top Management
+        Finds the user's direct superior based on the defined hierarchy.
+        - Employee -> Manager (if no manager -> Dept Lead) (if no lead -> Top Management)
+        - Manager -> Dept Lead (if no lead -> Top Management)
+        - Dept Lead -> Top Management
         """
-        if self.role == "top_management" or self.role == "admin":
+        if self.role in ["top_management", "admin"]:
             return None
 
-        if self.role == "employee":
-            if self.department:
-                # 1. Öncelik: Aynı departmandaki Manager
-                manager = self.department.employees.filter(role="manager", is_active=True).first()
+        # Department-level hierarchy check
+        if self.department:
+            # For an Employee, first check for a Manager in the same department
+            if self.role == "employee":
+                manager = User.objects.filter(
+                    department=self.department, role="manager", is_active=True
+                ).first()
                 if manager:
                     return manager
-                # 2. Öncelik: Aynı departmandaki Department Lead
-                lead = self.department.employees.filter(role="department_lead", is_active=True).first()
+            
+            # For an Employee (if no manager) or a Manager, check for a Department Lead
+            if self.role in ["employee", "manager"]:
+                lead = User.objects.filter(
+                    department=self.department, role="department_lead", is_active=True
+                ).first()
                 if lead:
                     return lead
-            # 3. Öncelik: Departman bağımsız Top Management
-            return User.objects.filter(role="top_management", is_active=True).first()
 
-        if self.role == "manager":
-            if self.department:
-                # 1. Öncelik: Aynı departmandaki Department Lead
-                lead = self.department.employees.filter(role="department_lead", is_active=True).first()
-                if lead:
-                    return lead
-            # 2. Öncelik: Departman bağımsız Top Management
-            return User.objects.filter(role="top_management", is_active=True).first()
+        # Fallback for all roles, or if no department-level superior is found
+        return User.objects.filter(role="top_management", is_active=True).first()
+    
+    # accounts/models.py -> User class
 
-        if self.role == "department_lead":
-            # Tek öncelik: Top Management
-            return User.objects.filter(role="top_management", is_active=True).first()
-
-        return None
+    def get_all_superiors(self):
+        """
+        Returns a list of all superiors in the hierarchy for this user.
+        e.g., [manager, department_lead, top_management]
+        """
+        superiors = []
+        current_superior = self.get_direct_superior()
+        # Add a safety limit to prevent infinite loops in case of misconfiguration
+        limit = 10 
+        count = 0
+        while current_superior and count < limit:
+            superiors.append(current_superior)
+            current_superior = current_superior.get_direct_superior()
+            count += 1
+        return superiors
