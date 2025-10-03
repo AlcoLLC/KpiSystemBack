@@ -25,6 +25,11 @@ class KPIEvaluation(models.Model):
         blank=True,
         help_text="Üst rəhbərin verdiyi skor (1-100 arası)"
     )
+    previous_score = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Dəyişiklik edildikdə əvvəlki skor"
+    )
     
     final_score = models.PositiveIntegerField(
         null=True,
@@ -42,11 +47,25 @@ class KPIEvaluation(models.Model):
         default=EvaluationType.SUPERIOR_EVALUATION,
     )
 
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_kpis",
+        help_text="Dəyərləndirməni son redaktə edən şəxs"
+    )
+    history = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Dəyərləndirmə dəyişikliklərinin tarixçəsi"
+    )
+
     class Meta:
         unique_together = ("task", "evaluator", "evaluatee", "evaluation_type")
 
     def save(self, *args, **kwargs):
-        if self.evaluation_type == self.EvaluationType.SUPERIOR_EVALUATION and self.superior_score:
+        if self.evaluation_type == self.EvaluationType.SUPERIOR_EVALUATION and self.superior_score is not None:
             self.final_score = self.superior_score
         super().save(*args, **kwargs)
 

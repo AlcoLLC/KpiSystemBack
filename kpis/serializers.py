@@ -22,9 +22,12 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
             'id', 'task_id', 'task', 'evaluator_id', 'evaluator', 
             'evaluatee_id', 'evaluatee', 'score', 'self_score', 
             'superior_score', 'final_score', 'comment', 
-            'evaluation_type', 'created_at', 'updated_at'
+            'evaluation_type', 'created_at', 'updated_at',
+            'updated_by', 'history'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'final_score']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'final_score',
+                            'updated_by', 'history'
+                            ]
 
     def get_task(self, obj):
         if obj.task:
