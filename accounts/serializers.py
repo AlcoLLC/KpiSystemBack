@@ -8,6 +8,7 @@ class UserSerializer(serializers.ModelSerializer):
     role_display = serializers.CharField(source='get_role_display', read_only=True)
     department_name = serializers.CharField(source='department.name', read_only=True, allow_null=True)
     password = serializers.CharField(write_only=True, required=False)
+    profile_photo = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -16,6 +17,14 @@ class UserSerializer(serializers.ModelSerializer):
             "first_name", "last_name", "profile_photo", "phone_number", "password"
         ]
         read_only_fields = ['role_display', 'department_name']
+
+    def get_profile_photo(self, obj):
+        request = self.context.get('request')
+        if obj.profile_photo and hasattr(obj.profile_photo, 'url'):
+            if request is not None:
+                return request.build_absolute_uri(obj.profile_photo.url)
+            return obj.profile_photo.url
+        return None
 
     def validate_email(self, value):
         current_user = self.instance
