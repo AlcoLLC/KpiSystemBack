@@ -55,12 +55,10 @@ class SubordinateListView(APIView):
         if department_id:
             subordinates = subordinates.filter(department__id=department_id)
 
-        serializer = SubordinateSerializer(subordinates, many=True)
+        serializer = SubordinateSerializer(subordinates, many=True, context={'request': request})
         return Response(serializer.data)
-    
 
 class PerformanceSummaryView(APIView):
-    """Calculates and returns detailed task performance for a selected user."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, slug=None, *args, **kwargs):
@@ -99,7 +97,7 @@ class PerformanceSummaryView(APIView):
         priority_completion = done_tasks.values('priority').annotate(count=Count('id')).order_by('priority')
 
         summary_data = {
-            "user": SubordinateSerializer(target_user).data,
+            "user": SubordinateSerializer(target_user, context={'request': request}).data,
             "task_performance": {
                 "total_tasks": all_tasks.count(),
                 "completed_count": completed_count,
