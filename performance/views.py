@@ -1,9 +1,9 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import permissions, status
-from django.db.models import Count, Q
+from django.db.models import Count, Q, F, Avg, Func
 from django.utils import timezone
-
+from datetime import timedelta
 from accounts.models import User
 from tasks.models import Task
 from .serializers import SubordinateSerializer
@@ -57,7 +57,7 @@ class SubordinateListView(APIView):
         serializer = SubordinateSerializer(subordinates, many=True)
         return Response(serializer.data)
     
-    
+
 class PerformanceSummaryView(APIView):
     """Calculates and returns detailed task performance for a selected user."""
     permission_classes = [permissions.IsAuthenticated]
