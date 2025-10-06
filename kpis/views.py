@@ -429,7 +429,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                     old_score = instance.superior_score
                     instance.superior_score = new_score
             except (ValueError, TypeError):
-                 raise ValidationError({"score": "Düzgün bir rəqəm daxil edin."})
+                raise ValidationError({"score": "Düzgün bir rəqəm daxil edin."})
 
         # Update comment if provided
         if new_comment is not None:
@@ -448,6 +448,12 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             if not isinstance(instance.history, list):
                 instance.history = []
             instance.history.append(history_entry)
+            
+            # --- START OF ADDED LOGIC ---
+            # Also, update the dedicated previous_score field in the model.
+            # Köhnə skoru xüsusi `previous_score` sahəsinə də əlavə edirik.
+            instance.previous_score = old_score
+            # --- END OF ADDED LOGIC ---
 
         # Record the user who made the update
         instance.updated_by = user
