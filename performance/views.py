@@ -10,30 +10,29 @@ from tasks.models import Task
 from .serializers import SubordinateSerializer
 
 def get_user_subordinates(user):
-    """
-    İstifadəçinin roluna görə ona tabe olan işçilərin siyahısını qaytarır.
-    Bu məntiq əvvəl KPI app-ında idi, indi mərkəzləşdiririk.
-    """
+
+    queryset = User.objects.none() 
+
     if user.role in ['admin', 'top_management']:
-        return User.objects.filter(is_active=True).exclude(pk=user.pk)
+        queryset = User.objects.filter(is_active=True).exclude(pk=user.pk)
     
-    if user.role == 'department_lead':
+    elif user.role == 'department_lead':
         if hasattr(user, 'led_department'):
-            return User.objects.filter(
+            queryset = User.objects.filter(
                 department=user.led_department,
                 role__in=['manager', 'employee'],
                 is_active=True
             )
     
-    if user.role == 'manager':
+    elif user.role == 'manager':
         if hasattr(user, 'managed_department'):
-            return User.objects.filter(
+            queryset = User.objects.filter(
                 department=user.managed_department,
                 role='employee',
                 is_active=True
             )
             
-    return User.objects.none()
+    return queryset.order_by('first_name', 'last_name')
 
 
 class SubordinateListView(APIView):
