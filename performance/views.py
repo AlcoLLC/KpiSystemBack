@@ -8,6 +8,10 @@ from datetime import timedelta
 from accounts.models import User
 from tasks.models import Task
 from .serializers import SubordinateSerializer
+from django.db.models import Avg
+from datetime import datetime
+from kpis.models import KPIEvaluation
+
 
 def get_user_subordinates(user):
 
@@ -108,3 +112,48 @@ class PerformanceSummaryView(APIView):
         }
         
         return Response(summary_data)
+    
+
+
+    class KpiMonthlySummaryView(APIView):
+
+        permission_classes = [permissions.IsAuthenticated]
+
+        def get(self, request, slug, *args, **kwargs):
+            try:
+                target_user = User.objects.get(slug=slug)
+            except User.DoesNotExist:
+                return Response({"detail": "İstifadəçi tapılmadı."}, status=status.HTTP_404_NOT_FOUND)
+
+            # URL-dən ay və il parametrlərini alırıq (məs: ?year=2025&month=10)
+            try:
+                year = int(request.query_params.get('year', datetime.now().year))
+                month = int(request.query_params.get('month', datetime.now().month))
+            except (ValueError, TypeError):
+                return Response({"detail": "İl və ay düzgün formatda deyil."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Həmin ay üçün olan yekun (superior) dəyərləndirmələri filterləyirik
+            evaluations = KPIEvaluation.objects.filter(
+                evaluatee=target_user,
+                evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION,
+                task__completed_at__year=year,
+                task__completed_at__month=month
+            ).select_related('task').order_by('task__completed_at')
+
+            # Chart üçün datanı hazırlayırıq
+            chart_data = {
+                'labels': [f"{day.day}" for day in evaluations.values_list('task__completed_at', flat=True)],
+                'scores': list(evaluations.values_list('final_score', flat=True))
+            }
+
+            # Ümumi ortalama balı hesablayırıq
+            average_score = evaluations.aggregate(avg_score=Avg('final_score'))['avg_score']
+
+            response_data = {
+                'year': year,
+                'month': month,
+                'average_score': round(average_score, 2) if average_score else 0,
+                'chart_data': chart_data,
+            }
+
+            return Response(response_data)
