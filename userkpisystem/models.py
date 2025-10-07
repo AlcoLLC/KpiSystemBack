@@ -56,6 +56,8 @@ class UserEvaluation(models.Model):
     class Meta:
         unique_together = ('evaluatee', 'evaluation_date')
         ordering = ['-evaluation_date', 'evaluatee']
+        verbose_name = "KPI Evaluation"
+        verbose_name_plural = "KPI Evaluations"
 
     def __str__(self):
         return f"Evaluation for {self.evaluatee.get_full_name()} on {self.evaluation_date.strftime('%Y-%m')}"
