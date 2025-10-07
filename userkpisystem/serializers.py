@@ -35,6 +35,12 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         except User.DoesNotExist:
             raise serializers.ValidationError({'evaluatee_id': 'Belə bir istifadəçi tapılmadı.'})
 
+        # --- ADDED CHECK ---
+        # This new validation rule prevents users from evaluating themselves.
+        if evaluator == evaluatee:
+            raise serializers.ValidationError("İstifadəçilər özlərini dəyərləndirə bilməz.")
+        # --- END OF ADDED CHECK ---
+
         direct_superior = evaluatee.get_direct_superior()
         is_admin = evaluator.is_staff or evaluator.role == 'admin'
 
@@ -118,7 +124,7 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
     
 class MonthlyScoreSerializer(serializers.ModelSerializer):
     """
-    Yalnız aylıq bal məlumatlarını sadə şəkildə qaytarmaq üçün istifadə olunur.
+    Used to return only monthly score data in a simple format.
     """
     class Meta:
         model = UserEvaluation
