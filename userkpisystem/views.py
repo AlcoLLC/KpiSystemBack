@@ -20,23 +20,23 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """
-        İstifadəçinin görməyə icazəsi olan dəyərləndirmələri filtrləyir.
-        - Admin hər şeyi görür.
-        - Rəhbərlər özlərinin və tabeliyində olanların dəyərləndirmələrini görür.
-        - İşçilər yalnız öz dəyərləndirmələrini görür.
-        """
         user = self.request.user
-        if user.is_staff or user.role == 'admin':
-            return self.queryset
+        if user.role == 'admin':
+            return self.queryset.order_by('-evaluation_date')
 
-        # Bütün tabeliyində olanları tapmaq üçün bir yol
-        subordinate_ids = [sub.id for sub in User.objects.all() if user in sub.get_all_superiors()]
+        try:
+            # Bu kod rəhbərin tabeliyində olan bütün işçiləri tapır
+            subordinate_ids = [sub.id for sub in User.objects.all() if user in sub.get_all_superiors()]
+        except Exception:
+            subordinate_ids = []
+
+        # Əgər rəhbərdirsə
+        if subordinate_ids:
+            allowed_view_ids = subordinate_ids + [user.id]
+            return self.queryset.filter(evaluatee_id__in=allowed_view_ids).order_by('-evaluation_date')
         
-        # İstifadəçinin özü və tabeliyində olanlar üçün filtrləmə
-        allowed_view_ids = subordinate_ids + [user.id]
-
-        return self.queryset.filter(evaluatee_id__in=allowed_view_ids)
+        # Normal işçilər yalnız öz dəyərləndirmələrini görür
+        return self.queryset.filter(evaluatee=user).order_by('-evaluation_date')
 
     def perform_create(self, serializer):
         evaluatee = serializer.validated_data['evaluatee']
@@ -46,63 +46,48 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         user = request.user
         
-        # Yalnız dəyərləndirməni edən rəhbər və ya Admin redaktə edə bilər
         if not (user.is_staff or user.role == 'admin') and instance.evaluator != user:
             raise PermissionDenied("Bu dəyərləndirməni redaktə etməyə icazəniz yoxdur.")
 
-        new_score = request.data.get('score')
-        if new_score is None:
-            return super().partial_update(request, *args, **kwargs) # Yalnız comment dəyişə bilər
-
-        try:
-            new_score = int(new_score)
-            old_score = instance.score
-            
-            # Yalnız skor dəyişibsə tarixçəyə yaz
-            if old_score != new_score:
-                history_entry = {
-                    "timestamp": timezone.now().isoformat(),
-                    "updated_by_id": user.id,
-                    "updated_by_name": user.get_full_name() or user.username,
-                    "previous_score": old_score,
-                    "new_score": new_score
-                }
-                if not isinstance(instance.history, list):
-                    instance.history = []
-                instance.history.append(history_entry)
-                instance.previous_score = old_score
-            
-            instance.updated_by = user
-            # serializer.save() aşağıda çağırıldığı üçün burada save etmirik
-        except (ValueError, TypeError):
-            return Response({'score': 'Düzgün bir rəqəm daxil edin.'}, status=status.HTTP_400_BAD_REQUEST)
-            
+        # Məntiqi serializer-ə köçürdüyümüz üçün buranı sadələşdiririk
         return super().partial_update(request, *args, **kwargs)
+
     
     @action(detail=False, methods=['get'], url_path='evaluable-users')
     def evaluable_users(self, request):
-        """
-        İstək göndərən rəhbərin birbaşa tabeliyində olan və 
-        dəyərləndirə biləcəyi bütün işçilərin siyahısını qaytarır.
-        Hər bir işçi üçün cari ayın dəyərləndirmə statusunu da əlavə edir.
-        """
         evaluator = request.user
         
-        # Admin bütün işçiləri (özü və top management xaric) dəyərləndirə bilər
-        if evaluator.is_staff or evaluator.role == 'admin':
-            subordinates = User.objects.filter(is_active=True).exclude(
-                Q(id=evaluator.id) | Q(role='top_management')
-            )
-        else:
-            # Bütün aktiv işçiləri gəzərək birbaşa rəhbəri `evaluator` olanları tapırıq
-            all_users = User.objects.filter(is_active=True).exclude(id=evaluator.id)
-            subordinates = [
-                user for user in all_users if user.get_direct_superior() == evaluator
-            ]
+        # Query parametrlərini alırıq
+        department_id = request.query_params.get('department')
+        date_str = request.query_params.get('date') # Format: YYYY-MM
 
-        # Serializer-ə `context` əlavə edərək cari ayın dəyərləndirməsini yoxlamaq olar
-        # Amma biz bunu serializer-in öz daxilində etdik.
-        serializer = UserForEvaluationSerializer(subordinates, many=True)
+        # Tarixi parse edirik
+        try:
+            if date_str:
+                evaluation_date = datetime.strptime(date_str, '%Y-%m').date().replace(day=1)
+            else:
+                evaluation_date = timezone.now().date().replace(day=1)
+        except ValueError:
+            return Response({'error': 'Tarix formatı yanlışdır. Format YYYY-MM olmalıdır.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Başlanğıc queryset
+        subordinates_qs = User.objects.filter(is_active=True)
+
+        if evaluator.is_staff or evaluator.role == 'admin':
+            subordinates = subordinates_qs.exclude(Q(id=evaluator.id) | Q(role='top_management'))
+        else:
+            # Bu hissə yavaş işləyə bilər. Mümkünsə `direct_superior` sahəsi əlavə etmək daha yaxşıdır.
+            all_users = subordinates_qs.exclude(id=evaluator.id)
+            subordinates = [user for user in all_users if user.get_direct_superior() == evaluator]
+
+        # Departamentə görə filtrləmə
+        if department_id:
+            # `subordinates` list olduğu üçün əlavə filtrləmə edirik
+            subordinates = [user for user in subordinates if user.department_id == int(department_id)]
+
+        # Serializer-ə kontekst vasitəsilə tarixi göndəririk
+        context = {'request': request, 'evaluation_date': evaluation_date}
+        serializer = UserForEvaluationSerializer(subordinates, many=True, context=context)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='performance-summary')

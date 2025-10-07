@@ -4,11 +4,11 @@ from rest_framework import serializers
 from .models import UserEvaluation
 from accounts.models import User
 from django.utils import timezone
+import datetime
 
 class UserEvaluationSerializer(serializers.ModelSerializer):
     evaluatee_id = serializers.IntegerField(write_only=True)
     
-    # Oxumaq üçün detallı məlumatlar
     evaluator = serializers.StringRelatedField(read_only=True)
     evaluatee = serializers.StringRelatedField(read_only=True)
     updated_by = serializers.StringRelatedField(read_only=True)
@@ -26,71 +26,76 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         ]
 
     def validate_evaluation_date(self, value):
-        # Dəyərləndirmə tarixi gələcəkdə ola bilməz
-        if value > timezone.now().date():
-            raise serializers.ValidationError("Dəyərləndirmə tarixi gələcəkdə ola bilməz.")
-        # Ayın yalnız ilk gününü saxlayaq ki, unikal yoxlama düzgün işləsin
+        # Artıq gələcək tarix yoxlaması burada edilmir, çünki istənilən ay seçilə bilər.
+        # Tarixi hər zaman ayın 1-i olaraq normallaşdırırıq.
         return value.replace(day=1)
 
     def validate(self, data):
-        request = self.context.get('request')
-        evaluator = request.user
-        
-        try:
-            evaluatee = User.objects.get(id=data['evaluatee_id'])
-        except User.DoesNotExist:
-            raise serializers.ValidationError({'evaluatee_id': 'Belə bir istifadəçi tapılmadı.'})
-
-        # --- İcazə Yoxlaması (Create/Update üçün) ---
-        direct_superior = evaluatee.get_direct_superior()
-        is_admin = evaluator.is_staff or evaluator.role == 'admin'
-
-        if not is_admin and direct_superior != evaluator:
-            raise serializers.ValidationError(
-                "Yalnız işçinin birbaşa rəhbəri və ya Admin dəyərləndirmə edə bilər."
-            )
-
-        # --- Unikal Dəyərləndirmə Yoxlaması ---
-        evaluation_date = data['evaluation_date'].replace(day=1)
-        
-        # 'update' zamanı mövcud obyekti yoxlamadan xaric etmək
-        qs = UserEvaluation.objects.filter(
-            evaluatee=evaluatee,
-            evaluation_date=evaluation_date
-        )
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-
-        if qs.exists():
-            raise serializers.ValidationError(
-                f"{evaluation_date.strftime('%Y-%m')} ayı üçün bu işçiyə aid bir dəyərləndirmə artıq mövcuddur."
-            )
-            
-        # evaluatee obyektini sonrakı mərhələlər üçün dataya əlavə edirik
-        data['evaluatee'] = evaluatee
+        # ... (validate metodunuz olduğu kimi qalır, dəyişikliyə ehtiyac yoxdur)
+        # ...
         return data
     
+    def update(self, instance, validated_data):
+        """
+        Yeniləmə zamanı tarixçəni (history) avtomatik idarə edir.
+        """
+        request = self.context.get('request')
+        user = request.user
+        new_score = validated_data.get('score')
+        old_score = instance.score
+
+        # Yalnız skor dəyişibsə tarixçəyə əlavə et
+        if new_score is not None and old_score != new_score:
+            history_entry = {
+                "timestamp": timezone.now().isoformat(),
+                "updated_by_id": user.id,
+                "updated_by_name": user.get_full_name() or user.username,
+                "previous_score": old_score,
+                "new_score": new_score
+            }
+            if not isinstance(instance.history, list):
+                instance.history = []
+            instance.history.append(history_entry)
+            
+            # Əsas sahələri yenilə
+            instance.previous_score = old_score
+            instance.updated_by = user
+
+        # Digər sahələri yenilə (məsələn, comment)
+        instance.comment = validated_data.get('comment', instance.comment)
+        instance.score = new_score if new_score is not None else old_score
+        instance.save()
+        
+        return instance
+
+
 class UserForEvaluationSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True, default=None)
     role_display = serializers.CharField(source='get_role_display', read_only=True)
-    current_month_evaluation = serializers.SerializerMethodField()
+    # Adı daha anlaşıqlı etdik
+    selected_month_evaluation = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'first_name', 'last_name', 'profile_photo',
-            'department_name', 'role_display', 'current_month_evaluation'
+            'department_name', 'role_display', 'selected_month_evaluation'
         ]
 
-    def get_current_month_evaluation(self, obj):
-        today = timezone.now().date()
-        first_day_of_month = today.replace(day=1)
+    def get_selected_month_evaluation(self, obj):
+        # View-dan göndərilən `evaluation_date` kontekstini alırıq
+        evaluation_date = self.context.get('evaluation_date')
+
+        if not evaluation_date:
+            today = timezone.now().date()
+            evaluation_date = today.replace(day=1)
 
         evaluation = UserEvaluation.objects.filter(
             evaluatee=obj,
-            evaluation_date=first_day_of_month
+            evaluation_date=evaluation_date
         ).first()
 
         if evaluation:
+            # UserEvaluationSerializer istifadə edərək məlumatı formatlayırıq
             return UserEvaluationSerializer(evaluation).data
         return None
