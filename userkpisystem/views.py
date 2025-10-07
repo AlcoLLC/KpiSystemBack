@@ -10,7 +10,7 @@ from datetime import timedelta
 from dateutil.relativedelta import relativedelta
 
 from .models import UserEvaluation
-from .serializers import UserEvaluationSerializer
+from .serializers import UserEvaluationSerializer, UserForEvaluationSerializer
 from accounts.models import User
 from django.db.models import Q
 
@@ -78,6 +78,32 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             return Response({'score': 'Düzgün bir rəqəm daxil edin.'}, status=status.HTTP_400_BAD_REQUEST)
             
         return super().partial_update(request, *args, **kwargs)
+    
+    @action(detail=False, methods=['get'], url_path='evaluable-users')
+    def evaluable_users(self, request):
+        """
+        İstək göndərən rəhbərin birbaşa tabeliyində olan və 
+        dəyərləndirə biləcəyi bütün işçilərin siyahısını qaytarır.
+        Hər bir işçi üçün cari ayın dəyərləndirmə statusunu da əlavə edir.
+        """
+        evaluator = request.user
+        
+        # Admin bütün işçiləri (özü və top management xaric) dəyərləndirə bilər
+        if evaluator.is_staff or evaluator.role == 'admin':
+            subordinates = User.objects.filter(is_active=True).exclude(
+                Q(id=evaluator.id) | Q(role='top_management')
+            )
+        else:
+            # Bütün aktiv işçiləri gəzərək birbaşa rəhbəri `evaluator` olanları tapırıq
+            all_users = User.objects.filter(is_active=True).exclude(id=evaluator.id)
+            subordinates = [
+                user for user in all_users if user.get_direct_superior() == evaluator
+            ]
+
+        # Serializer-ə `context` əlavə edərək cari ayın dəyərləndirməsini yoxlamaq olar
+        # Amma biz bunu serializer-in öz daxilində etdik.
+        serializer = UserForEvaluationSerializer(subordinates, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='performance-summary')
     def performance_summary(self, request):

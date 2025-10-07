@@ -69,3 +69,28 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         # evaluatee obyektini sonrakı mərhələlər üçün dataya əlavə edirik
         data['evaluatee'] = evaluatee
         return data
+    
+class UserForEvaluationSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source='department.name', read_only=True, default=None)
+    role_display = serializers.CharField(source='get_role_display', read_only=True)
+    current_month_evaluation = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'first_name', 'last_name', 'profile_photo',
+            'department_name', 'role_display', 'current_month_evaluation'
+        ]
+
+    def get_current_month_evaluation(self, obj):
+        today = timezone.now().date()
+        first_day_of_month = today.replace(day=1)
+
+        evaluation = UserEvaluation.objects.filter(
+            evaluatee=obj,
+            evaluation_date=first_day_of_month
+        ).first()
+
+        if evaluation:
+            return UserEvaluationSerializer(evaluation).data
+        return None
