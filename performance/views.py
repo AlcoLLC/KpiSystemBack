@@ -12,7 +12,7 @@ from django.db.models import Avg
 from datetime import datetime
 from kpis.models import KPIEvaluation
 from accounts.models import User, Department
-
+from accounts.serializers import DepartmentSerializer
 
 def get_user_subordinates(user):
     """
@@ -25,9 +25,7 @@ def get_user_subordinates(user):
     
     elif user.role == 'department_lead':
         try:
-            # Departament rəhbərinin rəhbərlik etdiyi departamenti tapır
             led_department = Department.objects.get(lead=user)
-            # Həmin departamentdəki menecer və işçiləri tapır
             queryset = User.objects.filter(
                 department=led_department,
                 role__in=['manager', 'employee'],
@@ -37,7 +35,6 @@ def get_user_subordinates(user):
             queryset = User.objects.none()
     
     elif user.role == 'manager':
-        # DÜZƏLİŞ: Menecerin öz departamentindəki işçiləri görməsini təmin edir
         if user.department:
             queryset = User.objects.filter(
                 department=user.department,
@@ -45,7 +42,6 @@ def get_user_subordinates(user):
                 is_active=True
             )
         else:
-            # Menecerin departamenti yoxdursa, heç kimi görməsin
             queryset = User.objects.none()
             
     return queryset.order_by('first_name', 'last_name')
@@ -167,3 +163,26 @@ class KpiMonthlySummaryView(APIView):
         }
 
         return Response(response_data)
+    
+
+
+class FilterableDepartmentListView(APIView):
+    """
+    İstifadəçinin roluna görə görə biləcəyi departamentləri qaytarır.
+    - Admin bütün departamentləri görür.
+    - Top Management yalnız rəhbəri (lead) olduğu departamentləri görür.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        user = request.user
+
+        if user.role == 'admin':
+            queryset = Department.objects.all()
+        elif user.role == 'top_management':
+            queryset = Department.objects.filter(lead=user)
+        else:
+            queryset = Department.objects.none()
+
+        serializer = DepartmentSerializer(queryset, many=True)
+        return Response(serializer.data)
