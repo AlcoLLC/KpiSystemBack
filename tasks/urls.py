@@ -13,5 +13,4 @@ urlpatterns = [
     path('stats/monthly/', MonthlyTaskStatsView.as_view(), name='monthly-task-stats'),
     path('stats/priority/', PriorityTaskStatsView.as_view(), name='priority-task-stats'),
     path('home-stats/', HomeStatsView.as_view(), name='task_home_stats'),
-
 ]
