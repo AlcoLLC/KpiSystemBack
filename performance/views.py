@@ -11,31 +11,42 @@ from .serializers import SubordinateSerializer
 from django.db.models import Avg
 from datetime import datetime
 from kpis.models import KPIEvaluation
-
+from accounts.models import User, Department
 
 
 def get_user_subordinates(user):
-
-    queryset = User.objects.none() 
+    """
+    İstifadəçinin roluna görə ona tabe olan işçilərin siyahısını qaytarır.
+    """
+    queryset = User.objects.none()
 
     if user.role in ['admin', 'top_management']:
         queryset = User.objects.filter(is_active=True).exclude(pk=user.pk)
     
     elif user.role == 'department_lead':
-        if hasattr(user, 'led_department'):
+        try:
+            
+            led_department = Department.objects.get(lead=user)
             queryset = User.objects.filter(
-                department=user.led_department,
+                department=led_department,
                 role__in=['manager', 'employee'],
                 is_active=True
             )
+        except Department.DoesNotExist:
+            queryset = User.objects.none()
     
     elif user.role == 'manager':
-        if hasattr(user, 'managed_department'):
+        try:
+           
+            managed_department = Department.objects.get(manager=user)
             queryset = User.objects.filter(
-                department=user.managed_department,
+                department=managed_department,
                 role='employee',
                 is_active=True
             )
+        except Department.DoesNotExist:
+            
+            queryset = User.objects.none()
             
     return queryset.order_by('first_name', 'last_name')
 
@@ -66,7 +77,7 @@ class PerformanceSummaryView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, slug=None, *args, **kwargs):
-        # DÜZƏLİŞ: slug olmasa, sorğunu göndərən istifadəçini götürür
+         
         if slug == 'me' or slug is None:
             target_user = request.user
         else:
@@ -75,7 +86,7 @@ class PerformanceSummaryView(APIView):
             except User.DoesNotExist:
                 return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # İcazə yoxlaması: İstifadəçi özündən yuxarıdakının performansına baxa bilməz (admin xaric)
+         
         if request.user.role != 'admin' and target_user.role == 'top_management' and request.user != target_user:
              return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -84,14 +95,14 @@ class PerformanceSummaryView(APIView):
         active_tasks = all_tasks.filter(status__in=['TODO', 'IN_PROGRESS'])
         today = timezone.now().date()
 
-        # Performans göstəricilərinin hesablanması (daha detallı)
+         
         completed_count = done_tasks.count()
         overdue_count = all_tasks.filter(
             due_date__lt=today, 
             status__in=['PENDING', 'TODO', 'IN_PROGRESS']
         ).count()
         
-        # Vaxtında tamamlama faizi (yalnız bitmə tarixi olanlar üçün)
+         
         tasks_with_due_date = done_tasks.filter(due_date__isnull=False)
         on_time_completed_count = tasks_with_due_date.filter(completed_at__date__lte=F('due_date')).count()
         total_relevant_completed = tasks_with_due_date.count()
