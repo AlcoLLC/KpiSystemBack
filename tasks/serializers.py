@@ -11,11 +11,18 @@ class TaskAssigneeSerializer(serializers.ModelSerializer):
         fields = ['id', 'first_name', 'last_name', 'profile_photo']
 
     def to_representation(self, instance):
-        represenation = super().to_representation(instance)
+        representation = super().to_representation(instance)
         request = self.context.get('request')
-        if instance.profile_photo and hasattr(instance.profile_photo, 'url'):
-            represenation['profile_photo'] = request.build_absolute_uri(instance.profile_photo.url) 
-        return represenation
+
+        # Get the relative photo URL from the default representation
+        photo_url = representation.get('profile_photo')
+
+        # Only build an absolute URL if both the request and photo_url exist
+        if request and photo_url:
+            representation['profile_photo'] = request.build_absolute_uri(photo_url)
+            
+        return representation
+
 
 
 class TaskSerializer(serializers.ModelSerializer):
