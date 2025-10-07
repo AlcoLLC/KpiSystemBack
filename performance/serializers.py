@@ -18,9 +18,9 @@ class SubordinateSerializer(serializers.ModelSerializer):
         
     # YENİ ƏLAVƏ OLUNAN METOD
     def get_profile_photo(self, obj):
-        request = self.context.get('request')
+        request = self.context.get('request', None)
         if obj.profile_photo and hasattr(obj.profile_photo, 'url'):
-            if request is not None:
+            if request:
                 return request.build_absolute_uri(obj.profile_photo.url)
             return obj.profile_photo.url
         return None
