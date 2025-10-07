@@ -201,7 +201,15 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
     # monthly_scores action remains the same.
     @action(detail=False, methods=['get'], url_path='monthly-scores')
     def monthly_scores(self, request):
+        """
+        Bir işçinin aylıq qiymətlərini qaytarır.
+        İndi seçilmiş tarixə qədər olan nəticələri filtrləmək üçün 
+        'date' query parametri də qəbul edir.
+        Query Params: ?evaluatee_id=<user_id>&date=<YYYY-MM>
+        """
         evaluatee_id = request.query_params.get('evaluatee_id')
+        date_str = request.query_params.get('date') # <-- ADDED: Get the date parameter
+
         if not evaluatee_id:
             return Response(
                 {'error': 'evaluatee_id parametri tələb olunur.'},
@@ -212,10 +220,26 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         except User.DoesNotExist:
             return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
             
+        # Permission check remains the same
         user = request.user
         if not (user.is_staff or user.role == 'admin' or user == evaluatee or user in evaluatee.get_all_superiors()):
             raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
 
-        scores = UserEvaluation.objects.filter(evaluatee=evaluatee).order_by('-evaluation_date')
+        # Start with the base queryset
+        scores = UserEvaluation.objects.filter(evaluatee=evaluatee)
+
+        # <-- ADDED: Filter by date if the parameter is provided -->
+        if date_str:
+            try:
+                # We want all scores up to the end of the selected month
+                end_date = datetime.strptime(date_str, '%Y-%m').date()
+                end_date = end_date + relativedelta(months=1) - relativedelta(days=1)
+                scores = scores.filter(evaluation_date__lte=end_date)
+            except ValueError:
+                return Response({'error': 'Tarix formatı yanlışdır. Format YYYY-MM olmalıdır.'}, status=status.HTTP_400_BAD_REQUEST)
+        # <-- END OF ADDED LOGIC -->
+
+        # Order and serialize the (potentially filtered) results
+        scores = scores.order_by('-evaluation_date')
         serializer = MonthlyScoreSerializer(scores, many=True)
         return Response(serializer.data)
