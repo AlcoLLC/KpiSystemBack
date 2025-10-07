@@ -21,8 +21,9 @@ class UserEvaluation(models.Model):
     )
     
     score = models.PositiveIntegerField(
-        validators=[MinValueValidator(1), MaxValueValidator(100)],
-        help_text="Aylıq performans skoru (1-100 arası)"
+        # Dəyişiklik burada edildi: MaxValueValidator(100) -> MaxValueValidator(10)
+        validators=[MinValueValidator(1), MaxValueValidator(10)],
+        help_text="Aylıq performans skoru (1-10 arası)"
     )
     
     comment = models.TextField(
