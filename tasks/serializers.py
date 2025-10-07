@@ -14,7 +14,7 @@ class TaskAssigneeSerializer(serializers.ModelSerializer):
         represenation = super().to_representation(instance)
         request = self.context.get('request')
         if instance.profile_photo and hasattr(instance.profile_photo, 'url'):
-            represenation['profile_photo'] = request.build_absolute_uri(instance.profile_photo.url)
+            represenation['profile_photo'] = request.build_absolute_uri(instance.profile_photo.url) 
         return represenation
 
 
