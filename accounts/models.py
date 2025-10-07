@@ -12,12 +12,12 @@ class Department(models.Model):
         blank=True, 
         related_name="managed_department"
     )
-    lead = models.OneToOneField(
+    lead = models.ForeignKey(
         'User', 
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True, 
-        related_name="led_department"
+        related_name="led_departments"
     )
 
     def __str__(self):
