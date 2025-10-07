@@ -85,8 +85,7 @@ class PerformanceSummaryView(APIView):
                 target_user = User.objects.get(slug=slug)
             except User.DoesNotExist:
                 return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-         
+        
         if request.user.role != 'admin' and target_user.role == 'top_management' and request.user != target_user:
              return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
