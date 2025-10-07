@@ -25,8 +25,9 @@ def get_user_subordinates(user):
     
     elif user.role == 'department_lead':
         try:
-            
+            # Departament rəhbərinin rəhbərlik etdiyi departamenti tapır
             led_department = Department.objects.get(lead=user)
+            # Həmin departamentdəki menecer və işçiləri tapır
             queryset = User.objects.filter(
                 department=led_department,
                 role__in=['manager', 'employee'],
@@ -36,16 +37,15 @@ def get_user_subordinates(user):
             queryset = User.objects.none()
     
     elif user.role == 'manager':
-        try:
-           
-            managed_department = Department.objects.get(manager=user)
+        # DÜZƏLİŞ: Menecerin öz departamentindəki işçiləri görməsini təmin edir
+        if user.department:
             queryset = User.objects.filter(
-                department=managed_department,
+                department=user.department,
                 role='employee',
                 is_active=True
             )
-        except Department.DoesNotExist:
-            
+        else:
+            # Menecerin departamenti yoxdursa, heç kimi görməsin
             queryset = User.objects.none()
             
     return queryset.order_by('first_name', 'last_name')
@@ -85,8 +85,7 @@ class PerformanceSummaryView(APIView):
                 target_user = User.objects.get(slug=slug)
             except User.DoesNotExist:
                 return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-         
+        
         if request.user.role != 'admin' and target_user.role == 'top_management' and request.user != target_user:
              return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
