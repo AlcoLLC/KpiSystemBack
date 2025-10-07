@@ -1,14 +1,26 @@
 from rest_framework import serializers
 from .models import Task
 from accounts.models import User
-from accounts.serializers import UserSerializer
 from kpis.serializers import KPIEvaluationSerializer
 
 
+class TaskAssigneeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'first_name', 'last_name', 'profile_photo']
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        photo_url = representation.get('profile_photo')
+        if request and photo_url:
+            representation['profile_photo'] = request.build_absolute_uri(photo_url)
+            
+        return representation
+    
 class TaskSerializer(serializers.ModelSerializer):
     assignee_details = serializers.StringRelatedField(source='assignee', read_only=True)
     created_by_details = serializers.StringRelatedField(source='created_by', read_only=True)
-
     assignee = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     priority_display = serializers.CharField(source='get_priority_display', read_only=True)
@@ -64,3 +76,4 @@ class TaskUserSerializer(serializers.ModelSerializer):
 
     def get_full_name(self, obj):
         return obj.get_full_name()
+    
