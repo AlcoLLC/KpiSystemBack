@@ -8,7 +8,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 from .models import UserEvaluation
-from .serializers import UserEvaluationSerializer, UserForEvaluationSerializer
+from .serializers import UserEvaluationSerializer, UserForEvaluationSerializer, MonthlyScoreSerializer
 from accounts.models import User
 from django.db.models import Q
 
@@ -77,6 +77,37 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         serializer = UserForEvaluationSerializer(subordinates, many=True, context=context)
         return Response(serializer.data)
     
+    @action(detail=False, methods=['get'], url_path='monthly-scores')
+    def monthly_scores(self, request):
+        """
+        Bir işçinin bütün aylar üzrə aldığı qiymətlərin siyahısını qaytarır.
+        Query Param: ?evaluatee_id=<user_id>
+        """
+        evaluatee_id = request.query_params.get('evaluatee_id')
+        if not evaluatee_id:
+            return Response(
+                {'error': 'evaluatee_id parametri tələb olunur.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            evaluatee = User.objects.get(id=evaluatee_id)
+        except User.DoesNotExist:
+            return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # İcazə yoxlaması (Statistika ilə eyni məntiq)
+        user = request.user
+        if not (user.is_staff or user.role == 'admin' or user == evaluatee or user in evaluatee.get_all_superiors()):
+            raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
+
+        # İşçiyə aid bütün dəyərləndirmələri tarixa görə sıralayırıq
+        scores = UserEvaluation.objects.filter(
+            evaluatee=evaluatee
+        ).order_by('-evaluation_date')
+        
+        serializer = MonthlyScoreSerializer(scores, many=True)
+        return Response(serializer.data)
+    
     @action(detail=False, methods=['get'], url_path='performance-summary')
     def performance_summary(self, request):
         evaluatee_id = request.query_params.get('evaluatee_id')
@@ -118,3 +149,4 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             summary['averages'][label] = round(average, 2) if average else None
 
         return Response(summary)
+        

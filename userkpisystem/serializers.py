@@ -115,3 +115,11 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
         if evaluation:
             return UserEvaluationSerializer(evaluation).data
         return None
+    
+class MonthlyScoreSerializer(serializers.ModelSerializer):
+    """
+    Yalnız aylıq bal məlumatlarını sadə şəkildə qaytarmaq üçün istifadə olunur.
+    """
+    class Meta:
+        model = UserEvaluation
+        fields = ['evaluation_date', 'score']
