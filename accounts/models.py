@@ -133,7 +133,7 @@ class User(AbstractUser):
         """
         Finds the user's direct superior based on the defined hierarchy.
         - Employee -> Manager (if no manager -> Dept Lead) (if no lead -> Top Management)
-        - Manager -> Dept Lead (if no lead -> Top Management)
+        - Manager -> Dept Lead (if no lead -> Top Management)`
         - Dept Lead -> Top Management
         """
         if self.role in ["top_management", "admin"]:

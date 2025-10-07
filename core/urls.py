@@ -24,6 +24,7 @@ urlpatterns = [
     path('api/kpis/', include('kpis.urls')),
     path('api/tasks/', include('tasks.urls')),
     path('api/performance/', include('performance.urls')),
+    path('api/users/', include('userkpisystem.urls'))
 ]
 
 if settings.DEBUG:
