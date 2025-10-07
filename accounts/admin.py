@@ -17,4 +17,11 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "manager", "lead")
+    list_display = ('id', 'name', 'manager', 'display_leads')
+    list_filter = ('manager',) 
+    search_fields = ('name',)
+
+    def display_leads(self, obj):
+        return ", ".join([user.get_full_name() for user in obj.lead.all()])
+
+    display_leads.short_description = 'Rəhbərlər (Leads)'

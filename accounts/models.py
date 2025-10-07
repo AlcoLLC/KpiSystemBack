@@ -10,14 +10,15 @@ class Department(models.Model):
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True, 
-        related_name="managed_department"
+        related_name="managed_department",
+        limit_choices_to={'role': 'manager'}
+
     )
-    lead = models.OneToOneField(
+    lead = models.ManyToManyField(
         'User', 
-        on_delete=models.SET_NULL, 
-        null=True, 
         blank=True, 
-        related_name="led_department"
+        related_name="led_departments",
+        limit_choices_to=models.Q(role='top_management') | models.Q(role='department_lead')
     )
 
     def __str__(self):
