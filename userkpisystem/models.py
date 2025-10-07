@@ -1,12 +1,8 @@
 from django.db import models
 from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
-import datetime
 
 class UserEvaluation(models.Model):
-    """
-    Represents a monthly performance evaluation of a user by their superior.
-    """
     evaluator = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -21,7 +17,6 @@ class UserEvaluation(models.Model):
     )
     
     score = models.PositiveIntegerField(
-        # Dəyişiklik burada edildi: MaxValueValidator(100) -> MaxValueValidator(10)
         validators=[MinValueValidator(1), MaxValueValidator(10)],
         help_text="Aylıq performans skoru (1-10 arası)"
     )
@@ -36,7 +31,6 @@ class UserEvaluation(models.Model):
         help_text="Dəyərləndirmənin aid olduğu ay və il (örn: 2025-10-01)"
     )
     
-    # --- Değişiklik Takibi ---
     previous_score = models.PositiveIntegerField(
         null=True,
         blank=True,
@@ -60,7 +54,6 @@ class UserEvaluation(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        # Bir işçi üçün bir ayda yalnız bir dəyərləndirmə ola bilər
         unique_together = ('evaluatee', 'evaluation_date')
         ordering = ['-evaluation_date', 'evaluatee']
 
