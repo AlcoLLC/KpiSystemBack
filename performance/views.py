@@ -114,9 +114,6 @@ class PerformanceSummaryView(APIView):
         
         return Response(summary_data)
     
-
-
-
 class KpiMonthlySummaryView(APIView):
     """
     Seçilmiş istifadəçinin müəyyən bir ay üçün olan tapşırıqlarının
