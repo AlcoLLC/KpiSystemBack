@@ -1,5 +1,3 @@
-# performance/serializers.py
-
 from rest_framework import serializers
 from .models import UserEvaluation
 from accounts.models import User
@@ -26,25 +24,48 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         ]
 
     def validate_evaluation_date(self, value):
-        # Artıq gələcək tarix yoxlaması burada edilmir, çünki istənilən ay seçilə bilər.
-        # Tarixi hər zaman ayın 1-i olaraq normallaşdırırıq.
         return value.replace(day=1)
 
     def validate(self, data):
-        # ... (validate metodunuz olduğu kimi qalır, dəyişikliyə ehtiyac yoxdur)
-        # ...
+        request = self.context.get('request')
+        evaluator = request.user
+        
+        try:
+            evaluatee = User.objects.get(id=data['evaluatee_id'])
+        except User.DoesNotExist:
+            raise serializers.ValidationError({'evaluatee_id': 'Belə bir istifadəçi tapılmadı.'})
+
+        direct_superior = evaluatee.get_direct_superior()
+        is_admin = evaluator.is_staff or evaluator.role == 'admin'
+
+        if not is_admin and direct_superior != evaluator:
+            raise serializers.ValidationError(
+                "Yalnız işçinin birbaşa rəhbəri və ya Admin dəyərləndirmə edə bilər."
+            )
+
+        evaluation_date = data['evaluation_date'].replace(day=1)
+        
+        qs = UserEvaluation.objects.filter(
+            evaluatee=evaluatee,
+            evaluation_date=evaluation_date
+        )
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+
+        if qs.exists():
+            raise serializers.ValidationError(
+                f"{evaluation_date.strftime('%Y-%m')} ayı üçün bu işçiyə aid bir dəyərləndirmə artıq mövcuddur."
+            )
+            
+        data['evaluatee'] = evaluatee
         return data
     
     def update(self, instance, validated_data):
-        """
-        Yeniləmə zamanı tarixçəni (history) avtomatik idarə edir.
-        """
         request = self.context.get('request')
         user = request.user
         new_score = validated_data.get('score')
         old_score = instance.score
 
-        # Yalnız skor dəyişibsə tarixçəyə əlavə et
         if new_score is not None and old_score != new_score:
             history_entry = {
                 "timestamp": timezone.now().isoformat(),
@@ -57,11 +78,9 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
                 instance.history = []
             instance.history.append(history_entry)
             
-            # Əsas sahələri yenilə
             instance.previous_score = old_score
             instance.updated_by = user
 
-        # Digər sahələri yenilə (məsələn, comment)
         instance.comment = validated_data.get('comment', instance.comment)
         instance.score = new_score if new_score is not None else old_score
         instance.save()
@@ -72,7 +91,6 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
 class UserForEvaluationSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True, default=None)
     role_display = serializers.CharField(source='get_role_display', read_only=True)
-    # Adı daha anlaşıqlı etdik
     selected_month_evaluation = serializers.SerializerMethodField()
 
     class Meta:
@@ -83,7 +101,6 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
         ]
 
     def get_selected_month_evaluation(self, obj):
-        # View-dan göndərilən `evaluation_date` kontekstini alırıq
         evaluation_date = self.context.get('evaluation_date')
 
         if not evaluation_date:
@@ -96,6 +113,5 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
         ).first()
 
         if evaluation:
-            # UserEvaluationSerializer istifadə edərək məlumatı formatlayırıq
             return UserEvaluationSerializer(evaluation).data
         return None
