@@ -1,8 +1,10 @@
+# evaluations/views.py
+
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
-from django.db.models import Avg
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from django.db.models import Avg, Q
 from django.utils import timezone
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
@@ -10,7 +12,16 @@ from dateutil.relativedelta import relativedelta
 from .models import UserEvaluation
 from .serializers import UserEvaluationSerializer, UserForEvaluationSerializer, MonthlyScoreSerializer
 from accounts.models import User
-from django.db.models import Q
+
+# Role hierarchy for easier comparison
+ROLE_HIERARCHY = {
+    'employee': 1,
+    'manager': 2,
+    'department_lead': 3,
+    'top_management': 4,
+    'admin': 5, # Admin has the highest level
+}
+
 
 class UserEvaluationViewSet(viewsets.ModelViewSet):
     queryset = UserEvaluation.objects.select_related('evaluator', 'evaluatee', 'updated_by').all()
@@ -18,39 +29,76 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """
+        Filters evaluations based on a strict hierarchical and departmental logic.
+        - Admins/Staff see everything.
+        - Users see their own evaluations.
+        - Superiors see evaluations of their subordinates within their department.
+        """
         user = self.request.user
 
         if user.is_staff or user.role == 'admin':
             return self.queryset.order_by('-evaluation_date')
 
-        try:
-            subordinate_ids = [sub.id for sub in User.objects.all() if user in sub.get_all_superiors()]
-        except Exception:
-            subordinate_ids = []
+        # Base query for the user's own evaluations
+        q_objects = Q(evaluatee=user)
 
-        if subordinate_ids:
-            allowed_view_ids = subordinate_ids + [user.id]
-            return self.queryset.filter(evaluatee_id__in=allowed_view_ids).order_by('-evaluation_date')
+        # Add subordinates' evaluations based on role and department
+        if user.role == 'top_management':
+            # Top Management sees all leads, managers, and employees
+            q_objects |= Q(evaluatee__role__in=['department_lead', 'manager', 'employee'])
         
-        return self.queryset.filter(evaluatee=user).order_by('-evaluation_date')
+        elif user.role == 'department_lead' and user.department:
+            # Department Leads see managers and employees in their department
+            q_objects |= Q(
+                evaluatee__department=user.department,
+                evaluatee__role__in=['manager', 'employee']
+            )
+        
+        elif user.role == 'manager' and user.department:
+            # Managers see employees in their department
+            q_objects |= Q(
+                evaluatee__department=user.department,
+                evaluatee__role='employee'
+            )
+        
+        return self.queryset.filter(q_objects).distinct().order_by('-evaluation_date')
 
     def perform_create(self, serializer):
+        """
+        The validation for creation is handled in the serializer's validate method.
+        This simply sets the evaluator.
+        """
         evaluatee = serializer.validated_data['evaluatee']
+        
+        # The serializer already validates if the request.user can evaluate the evaluatee.
+        # So we can safely save here.
         serializer.save(evaluator=self.request.user, evaluatee=evaluatee)
 
     def partial_update(self, request, *args, **kwargs):
+        """
+        Allows editing only by an admin or the evaluatee's CURRENT direct superior.
+        """
         instance = self.get_object()
         user = request.user
+        evaluatee = instance.evaluatee
         
-        if not (user.is_staff or user.role == 'admin') and instance.evaluator != user:
-            raise PermissionDenied("Bu dəyərləndirməni redaktə etməyə icazəniz yoxdur.")
+        # Check for permission
+        is_admin = user.is_staff or user.role == 'admin'
+        is_direct_superior = evaluatee.get_direct_superior() == user
+        
+        if not (is_admin or is_direct_superior):
+            raise PermissionDenied("Bu dəyərləndirməni redaktə etməyə yalnız birbaşa rəhbər və ya Admin icazəlidir.")
 
         return super().partial_update(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'], url_path='evaluable-users')
     def evaluable_users(self, request):
+        """
+        Lists users that the requesting user has the authority to evaluate based on
+        the defined hierarchy.
+        """
         evaluator = request.user
-        
         department_id = request.query_params.get('department')
         date_str = request.query_params.get('date')
 
@@ -62,55 +110,45 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         except ValueError:
             return Response({'error': 'Tarix formatı yanlışdır. Format YYYY-MM olmalıdır.'}, status=status.HTTP_400_BAD_REQUEST)
         
-        subordinates_qs = User.objects.filter(is_active=True)
+        # Base queryset for all potential subordinates
+        subordinates_qs = User.objects.filter(is_active=True).exclude(id=evaluator.id)
 
+        # Apply hierarchical filtering
         if evaluator.is_staff or evaluator.role == 'admin':
-            subordinates = subordinates_qs.exclude(Q(id=evaluator.id) | Q(role='top_management'))
-        else:
-            all_users = subordinates_qs.exclude(id=evaluator.id)
-            subordinates = [user for user in all_users if user.get_direct_superior() == evaluator]
+            # Admins can evaluate anyone except top management
+            subordinates = subordinates_qs.exclude(role='top_management')
+        elif evaluator.role == 'top_management':
+            # Top management evaluates leads, managers, and employees
+            subordinates = subordinates_qs.filter(role__in=['department_lead', 'manager', 'employee'])
+        elif evaluator.role == 'department_lead':
+            # Leads evaluate managers and employees in their department
+            subordinates = subordinates_qs.filter(department=evaluator.department, role__in=['manager', 'employee'])
+        elif evaluator.role == 'manager':
+            # Managers evaluate employees in their department
+            subordinates = subordinates_qs.filter(department=evaluator.department, role='employee')
+        else: # Employees cannot evaluate anyone
+            subordinates = User.objects.none()
 
+        # Apply optional department filter from query params
         if department_id:
-            subordinates = [user for user in subordinates if user.department_id == int(department_id)]
+            try:
+                subordinates = subordinates.filter(department_id=int(department_id))
+            except (ValueError, TypeError):
+                return Response({'error': 'Departament ID düzgün deyil.'}, status=status.HTTP_400_BAD_REQUEST)
 
         context = {'request': request, 'evaluation_date': evaluation_date}
         serializer = UserForEvaluationSerializer(subordinates, many=True, context=context)
         return Response(serializer.data)
     
-    @action(detail=False, methods=['get'], url_path='monthly-scores')
-    def monthly_scores(self, request):
-        """
-        Bir işçinin bütün aylar üzrə aldığı qiymətlərin siyahısını qaytarır.
-        Query Param: ?evaluatee_id=<user_id>
-        """
-        evaluatee_id = request.query_params.get('evaluatee_id')
-        if not evaluatee_id:
-            return Response(
-                {'error': 'evaluatee_id parametri tələb olunur.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            evaluatee = User.objects.get(id=evaluatee_id)
-        except User.DoesNotExist:
-            return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
-
-        # İcazə yoxlaması (Statistika ilə eyni məntiq)
-        user = request.user
-        if not (user.is_staff or user.role == 'admin' or user == evaluatee or user in evaluatee.get_all_superiors()):
-            raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
-
-        # İşçiyə aid bütün dəyərləndirmələri tarixa görə sıralayırıq
-        scores = UserEvaluation.objects.filter(
-            evaluatee=evaluatee
-        ).order_by('-evaluation_date')
-        
-        serializer = MonthlyScoreSerializer(scores, many=True)
-        return Response(serializer.data)
-    
     @action(detail=False, methods=['get'], url_path='performance-summary')
     def performance_summary(self, request):
+        """
+        Calculates performance summary for an employee. Now accepts an optional 'date'
+        query parameter to calculate averages for periods ending on that date.
+        """
         evaluatee_id = request.query_params.get('evaluatee_id')
+        date_str = request.query_params.get('date') # Expects 'YYYY-MM'
+
         if not evaluatee_id:
             return Response(
                 {'error': 'evaluatee_id parametri tələb olunur.'},
@@ -122,11 +160,20 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         except User.DoesNotExist:
             return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Permission Check (Same as before, relies on get_all_superiors)
         user = request.user
         if not (user.is_staff or user.role == 'admin' or user == evaluatee or user in evaluatee.get_all_superiors()):
             raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
 
-        today = timezone.now().date()
+        # Determine the end date for calculations
+        try:
+            if date_str:
+                end_date = datetime.strptime(date_str, '%Y-%m').date().replace(day=1)
+            else:
+                end_date = timezone.now().date().replace(day=1)
+        except ValueError:
+            return Response({'error': 'Tarix formatı yanlışdır. Format YYYY-MM olmalıdır.'}, status=status.HTTP_400_BAD_REQUEST)
+
         summary = {
             'evaluatee_id': evaluatee.id,
             'evaluatee_name': evaluatee.get_full_name(),
@@ -136,11 +183,12 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         periods = {'3 ay': 3, '6 ay': 6, '9 ay': 9, '1 il': 12}
 
         for label, months in periods.items():
-            start_date = today - relativedelta(months=months)
+            start_date = end_date - relativedelta(months=months) + relativedelta(days=1)
             
             avg_data = UserEvaluation.objects.filter(
                 evaluatee=evaluatee,
-                evaluation_date__gte=start_date
+                evaluation_date__gte=start_date,
+                evaluation_date__lte=end_date # Ensure we don't include future data
             ).aggregate(
                 average_score=Avg('score')
             )
@@ -149,4 +197,25 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             summary['averages'][label] = round(average, 2) if average else None
 
         return Response(summary)
-        
+
+    # monthly_scores action remains the same.
+    @action(detail=False, methods=['get'], url_path='monthly-scores')
+    def monthly_scores(self, request):
+        evaluatee_id = request.query_params.get('evaluatee_id')
+        if not evaluatee_id:
+            return Response(
+                {'error': 'evaluatee_id parametri tələb olunur.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            evaluatee = User.objects.get(id=evaluatee_id)
+        except User.DoesNotExist:
+            return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
+            
+        user = request.user
+        if not (user.is_staff or user.role == 'admin' or user == evaluatee or user in evaluatee.get_all_superiors()):
+            raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
+
+        scores = UserEvaluation.objects.filter(evaluatee=evaluatee).order_by('-evaluation_date')
+        serializer = MonthlyScoreSerializer(scores, many=True)
+        return Response(serializer.data)
