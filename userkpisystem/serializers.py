@@ -42,7 +42,7 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         # --- END OF ADDED CHECK ---
 
         direct_superior = evaluatee.get_direct_superior()
-        is_admin = evaluator.is_staff or evaluator.role == 'admin'
+        is_admin = evaluator.role == 'admin'
 
         if not is_admin and direct_superior != evaluator:
             raise serializers.ValidationError(

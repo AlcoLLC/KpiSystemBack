@@ -24,7 +24,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         - Evaluations of their hierarchical subordinates.
         """
         user = self.request.user
-        if user.is_staff or user.role == 'admin':
+        if        user.role == 'admin':
             return self.queryset.select_related('task', 'evaluator', 'evaluatee')
 
         # Base query for user's own evaluations
@@ -146,7 +146,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         if viewer == evaluatee:
             return True  # Can see their own results
 
-        if viewer.is_staff or viewer.role == 'admin':
+        if viewer.role == 'admin':
             return True  # Admins can see everything
 
         # Check if the viewer is in the evaluatee's upward chain of command.

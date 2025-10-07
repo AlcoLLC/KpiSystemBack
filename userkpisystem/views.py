@@ -27,7 +27,7 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         """
         user = self.request.user
 
-        if user.is_staff or user.role == 'admin':
+        if user.role == 'admin':
             return self.queryset.order_by('-evaluation_date')
 
         # Hər bir istifadəçi mütləq öz dəyərləndirməsini görür.
@@ -53,7 +53,7 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         user = request.user
         evaluatee = instance.evaluatee
-        is_admin = user.is_staff or user.role == 'admin'
+        is_admin = user.role == 'admin'
         is_direct_superior = evaluatee.get_direct_superior() == user
         if not (is_admin or is_direct_superior):
             raise PermissionDenied("Bu dəyərləndirməni redaktə etməyə yalnız birbaşa rəhbər və ya Admin icazəlidir.")
@@ -76,7 +76,7 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         
         subordinates = User.objects.none()
 
-        if evaluator.is_staff or evaluator.role == 'admin':
+        if evaluator.role == 'admin':
             subordinates = User.objects.filter(is_active=True).exclude(Q(id=evaluator.id) | Q(role='top_management'))
         
         elif evaluator.department: # Departament, admin olmayan bütün digər rollar üçün mütləqdir
@@ -89,7 +89,7 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
                 subordinates = base_department_qs.filter(role='employee')
 
         # Adminin öz siyahısını departamentə görə filtrləməsi üçün
-        if department_id and (evaluator.is_staff or evaluator.role == 'admin'):
+        if department_id and (evaluator.role == 'admin'):
             subordinates = subordinates.filter(department_id=int(department_id))
 
         context = {'request': request, 'evaluation_date': evaluation_date}
@@ -127,7 +127,7 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
             
         user = self.request.user
-        if not (user.is_staff or user.role == 'admin' or user == evaluatee or user in evaluatee.get_all_superiors()):
+        if not (user.role == 'admin' or user == evaluatee or user in evaluatee.get_all_superiors()):
             raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
 
         scores = UserEvaluation.objects.filter(evaluatee=evaluatee)
@@ -158,7 +158,7 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
 
         user = self.request.user
-        if not (user.is_staff or user.role == 'admin' or user == evaluatee or user in evaluatee.get_all_superiors()):
+        if not (user.role == 'admin' or user == evaluatee or user in evaluatee.get_all_superiors()):
             raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
 
         try:
