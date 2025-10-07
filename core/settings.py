@@ -232,28 +232,23 @@ CONTACT_FORM_SETTINGS = {
     'RESET_PERIOD_HOURS': 24,  
 }
 
+import sys
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'handlers': {
-        'file': {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': 'contact_form.log',
-        },
         'console': {
-            'level': 'DEBUG',
             'class': 'logging.StreamHandler',
+            'stream': sys.stdout,
         },
     },
-    'loggers': {
-        'accounts.views': { 
-            'handlers': ['file', 'console'],
-            'level': 'INFO',
-            'propagate': True,
-        },
+    'root': {
+        'handlers': ['console'],
+        'level': 'DEBUG',
     },
 }
+
 
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
