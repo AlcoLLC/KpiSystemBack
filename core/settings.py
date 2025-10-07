@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'kpis',
     'tasks',  
     'performance',
+    'userkpisystem'
 ]
 
 SITE_ID = 1
