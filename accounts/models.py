@@ -17,7 +17,7 @@ class Department(models.Model):
     lead = models.ManyToManyField(
         'User', 
         blank=True, 
-        related_name="led_departments",
+        related_name="leaded_departments",
         limit_choices_to=models.Q(role='top_management') | models.Q(role='department_lead')
     )
 
