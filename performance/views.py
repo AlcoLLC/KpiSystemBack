@@ -13,20 +13,21 @@ from datetime import datetime
 from kpis.models import KPIEvaluation
 from accounts.models import User, Department
 from accounts.serializers import DepartmentSerializer
- 
+
+# performance/views.py
 
 def get_user_subordinates(user):
     """
     İstifadəçinin roluna görə ona tabe olan işçilərin siyahısını qaytarır.
     """
-    queryset = User.objects.none()  
+    queryset = User.objects.none()
 
     if user.role in ['admin', 'top_management']:
         queryset = User.objects.filter(is_active=True).exclude(pk=user.pk)
     
     elif user.role == 'department_lead':
-       
-        led_departments = user.led_departments.all()
+        
+        led_departments = Department.objects.filter(lead=user)  
         
         if led_departments.exists():
              
@@ -36,8 +37,8 @@ def get_user_subordinates(user):
                 is_active=True
             )
         else:
-            
             queryset = User.objects.none()
+     
     
     elif user.role == 'manager':
         if user.department:
