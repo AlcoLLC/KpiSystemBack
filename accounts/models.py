@@ -14,11 +14,21 @@ class Department(models.Model):
         limit_choices_to={'role': 'manager'}
 
     )
-    lead = models.ManyToManyField(
-        'User', 
-        blank=True, 
-        related_name="led_departments",
-        limit_choices_to=models.Q(role='top_management') | models.Q(role='department_lead')
+
+    department_lead = models.OneToOneField(
+        'User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='led_department',
+        limit_choices_to={'role': 'department_lead'}
+    )
+
+    top_management = models.ManyToManyField(
+        'User',
+        blank=True,
+        related_name='top_managed_departments',
+        limit_choices_to={'role': 'top_management'}
     )
 
     def __str__(self):
@@ -158,20 +168,19 @@ class User(AbstractUser):
         if self.role in ["admin", "top_management"] or not self.department:
             return None
 
+        # Employee-nin birinci rəhbəri meneceridir
         if self.role == 'employee':
-            manager = User.objects.filter(department=self.department, role='manager', is_active=True).first()
-            if manager:
-                return manager
+            if self.department.manager:
+                return self.department.manager
         
+        # Employee və Manager-in rəhbəri departament lideridir
         if self.role in ['employee', 'manager']:
-            department_lead = User.objects.filter(department=self.department, role='department_lead', is_active=True).first()
-            if department_lead:
-                return department_lead
+            if self.department.department_lead:
+                return self.department.department_lead
 
-        if self.role in ['employee', 'manager', 'department_lead']:
-            top_management = User.objects.filter(department=self.department, role='top_management', is_active=True).first()
-            if top_management:
-                return top_management
+        # Hər kəsin rəhbəri (əgər varsa) top management-dən biridir
+        if self.department.top_management.exists():
+            return self.department.top_management.first()
         
         return None
 
@@ -207,29 +216,34 @@ class User(AbstractUser):
     def get_subordinates(self):
         """
         İstifadəçinin roluna əsasən ona birbaşa tabe olan bütün işçiləri qaytarır.
-        Bu metod ManyToManyField ("lead") və OneToOneField ("manager") əlaqələrini
-        düzgün nəzərə alır.
         """
-        
-        # Admin və Top Management özlərindən başqa bütün aktiv istifadəçiləri görür
-        if self.role in ['admin', 'top_management']:
+        if self.role == 'admin':
             return User.objects.filter(is_active=True).exclude(pk=self.pk).order_by('first_name', 'last_name')
 
-        # Department Lead rəhbərlik etdiyi BÜTÜN departamentlərdəki işçiləri görür
-        if self.role == 'department_lead':
-            # "led_departments" -> Department modelindəki 'lead' sahəsinin related_name'idir
-            led_departments = self.led_departments.all()
-            if led_departments.exists():
+        if self.role == 'top_management':
+            # Bu istifadəçinin rəhbərlik etdiyi BÜTÜN departamentləri götürürük
+            managed_departments = self.top_managed_departments.all()
+            if managed_departments.exists():
                 return User.objects.filter(
-                    department__in=led_departments,
+                    department__in=managed_departments,
+                    role__in=['department_lead', 'manager', 'employee'],
+                    is_active=True
+                ).exclude(pk=self.pk).order_by('first_name', 'last_name')
+        
+        if self.role == 'department_lead':
+            try:
+                # Bu istifadəçinin rəhbərlik etdiyi tək departamenti götürürük
+                led_dept = self.led_department 
+                return User.objects.filter(
+                    department=led_dept,
                     role__in=['manager', 'employee'],
                     is_active=True
                 ).order_by('first_name', 'last_name')
-        
-        # Manager idarə etdiyi departamentdəki işçiləri görür
+            except Department.DoesNotExist:
+                return User.objects.none()
+
         if self.role == 'manager':
             try:
-                # "managed_department" -> Department modelindəki 'manager' sahəsinin related_name'idir
                 managed_dept = self.managed_department
                 return User.objects.filter(
                     department=managed_dept,
@@ -237,8 +251,6 @@ class User(AbstractUser):
                     is_active=True
                 ).order_by('first_name', 'last_name')
             except Department.DoesNotExist:
-                # Bəzən manager heç bir departamentə təyin edilməyə bilər
                 return User.objects.none()
 
-        # Digər rolların (məsələn, Employee) tabeliyində işçi yoxdur
         return User.objects.none()
