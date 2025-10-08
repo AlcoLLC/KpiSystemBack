@@ -89,11 +89,11 @@ class User(AbstractUser):
         if self.role == "employee":
             if not self.department:
                 return None
-            return self.department.manager or self.department.lead
+            return self.department.manager or self.department.department_lead
 
         elif self.role == "manager":
-            if hasattr(self, 'managed_department'):
-                return self.managed_department.lead
+            if self.department:
+                return self.department.department_lead
             return None
 
         elif self.role == "department_lead":
