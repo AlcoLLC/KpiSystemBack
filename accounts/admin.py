@@ -16,14 +16,14 @@ class UserAdmin(BaseUserAdmin):
     ordering = ('id',)
 
     def get_inlines(self, request, obj=None):
-        if obj and obj.role in ['department_lead', 'top_management']:
+        if obj and obj.role == 'top_management':
             return [LedDepartmentsInline]
         return []
 
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)
         
-        if obj and obj.role in ['department_lead', 'top_management']:
+        if obj and obj.role == 'top_management':
             additional_fields = ('role', 'profile_photo', 'phone_number')
         else:
             additional_fields = ('role', 'department', 'profile_photo', 'phone_number')
