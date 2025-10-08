@@ -14,33 +14,36 @@ from kpis.models import KPIEvaluation
 from accounts.models import User, Department
 from accounts.serializers import DepartmentSerializer
 
-# performance/views.py
+from accounts.models import User, Department # Bu importların olduğundan əmin olun
 
 def get_user_subordinates(user):
     """
     İstifadəçinin roluna görə ona tabe olan işçilərin siyahısını qaytarır.
+    (BÜTÜN ROLLARI DƏSTƏKLƏYƏN YENİLƏNMİŞ VERSİYA)
     """
     queryset = User.objects.none()
 
     if user.role in ['admin', 'top_management']:
+        
         queryset = User.objects.filter(is_active=True).exclude(pk=user.pk)
     
     elif user.role == 'department_lead':
         
-        led_departments = Department.objects.filter(leads=user)  
+        led_departments = user.led_departments.all()
         
         if led_departments.exists():
-             
+            
             queryset = User.objects.filter(
                 department__in=led_departments,
                 role__in=['manager', 'employee'],
                 is_active=True
             )
         else:
+            
             queryset = User.objects.none()
-     
     
     elif user.role == 'manager':
+        
         if user.department:
             queryset = User.objects.filter(
                 department=user.department,
@@ -50,6 +53,7 @@ def get_user_subordinates(user):
         else:
             queryset = User.objects.none()
             
+    
     return queryset.order_by('first_name', 'last_name')
 
 
