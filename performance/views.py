@@ -182,7 +182,9 @@ class FilterableDepartmentListView(APIView):
         if user.role == 'admin':
             queryset = Department.objects.all()
         elif user.role == 'top_management':
-            queryset = Department.objects.filter(leads=user)
+            queryset = Department.objects.filter(lead=user)
+        elif user.role == 'department_lead':
+           queryset = Department.objects.filter(lead=user)
         else:
             queryset = Department.objects.none()
 
