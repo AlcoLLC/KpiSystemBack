@@ -14,37 +14,38 @@ from kpis.models import KPIEvaluation
 from accounts.models import User, Department
 from accounts.serializers import DepartmentSerializer
 
-from accounts.models import User, Department # Make sure Department is imported
-
 def get_user_subordinates(user):
     """
     Returns a list of users subordinate to the given user, based on their role.
     """
-    queryset = User.objects.none()
-
     if user.role in ['admin', 'top_management']:
-        queryset = User.objects.filter(is_active=True).exclude(pk=user.pk)
+        return User.objects.filter(is_active=True).exclude(pk=user.pk).order_by('first_name', 'last_name')
     
-    elif user.role == 'department_lead':
-         
+    # THE FIX FOR DEPARTMENT LEAD
+    if user.role == 'department_lead':
+        # Get all departments this user is a lead of
         led_departments = user.led_departments.all()
         if led_departments.exists():
-            queryset = User.objects.filter(
+            return User.objects.filter(
                 department__in=led_departments,
                 role__in=['manager', 'employee'],
                 is_active=True
-            )
+            ).exclude(pk=user.pk).order_by('first_name', 'last_name')
     
-    elif user.role == 'manager':
-
-        if user.department:
-            queryset = User.objects.filter(
-                department=user.department,
+    # THE FIX FOR MANAGER
+    if user.role == 'manager':
+        try:
+            # Find the department this user manages
+            managed_department = Department.objects.get(manager=user)
+            return User.objects.filter(
+                department=managed_department,
                 role='employee',
                 is_active=True
-            )
+            ).exclude(pk=user.pk).order_by('first_name', 'last_name')
+        except Department.DoesNotExist:
+            return User.objects.none()
             
-    return queryset.order_by('first_name', 'last_name')
+    return User.objects.none()
 
 
 class SubordinateListView(APIView):
