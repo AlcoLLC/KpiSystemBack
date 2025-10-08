@@ -26,6 +26,8 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
     def validate_evaluation_date(self, value):
         return value.replace(day=1)
 
+    # kpi/serializers.py -> UserEvaluationSerializer -> validate metodu
+
     def validate(self, data):
         request = self.context.get('request')
         evaluator = request.user
@@ -35,19 +37,20 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         except User.DoesNotExist:
             raise serializers.ValidationError({'evaluatee_id': 'Belə bir istifadəçi tapılmadı.'})
 
-        # --- ADDED CHECK ---
-        # This new validation rule prevents users from evaluating themselves.
         if evaluator == evaluatee:
             raise serializers.ValidationError("İstifadəçilər özlərini dəyərləndirə bilməz.")
-        # --- END OF ADDED CHECK ---
-
-        direct_superior = evaluatee.get_direct_superior()
+        
+        # --- DƏYİŞİKLİK BURADADIR ---
+        # Köhnə get_direct_superior() əvəzinə get_kpi_evaluator() istifadə edilir
+        kpi_evaluator = evaluatee.get_kpi_evaluator()
         is_admin = evaluator.role == 'admin'
 
-        if not is_admin and direct_superior != evaluator:
+        # Yoxlama: Dəyərləndirən şəxs ya Admin, ya da işçinin KPI sistemindəki birbaşa rəhbəri olmalıdır
+        if not is_admin and kpi_evaluator != evaluator:
             raise serializers.ValidationError(
-                "Yalnız işçinin birbaşa rəhbəri və ya Admin dəyərləndirmə edə bilər."
+                "Yalnız işçinin KPI iyerarxiyasındakı birbaşa rəhbəri və ya Admin dəyərləndirmə edə bilər."
             )
+        # --- DƏYİŞİKLİK SONA ÇATDI ---
 
         evaluation_date = data['evaluation_date'].replace(day=1)
         
@@ -93,7 +96,6 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         
         return instance
 
-
 class UserForEvaluationSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True, default=None)
     role_display = serializers.CharField(source='get_role_display', read_only=True)
@@ -123,9 +125,6 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
         return None
     
 class MonthlyScoreSerializer(serializers.ModelSerializer):
-    """
-    Used to return only monthly score data in a simple format.
-    """
     class Meta:
         model = UserEvaluation
         fields = ['evaluation_date', 'score']
