@@ -202,3 +202,43 @@ class User(AbstractUser):
             current_superior = current_superior.get_kpi_evaluator()
             count += 1
         return superiors
+    
+
+    def get_subordinates(self):
+        """
+        İstifadəçinin roluna əsasən ona birbaşa tabe olan bütün işçiləri qaytarır.
+        Bu metod ManyToManyField ("lead") və OneToOneField ("manager") əlaqələrini
+        düzgün nəzərə alır.
+        """
+        
+        # Admin və Top Management özlərindən başqa bütün aktiv istifadəçiləri görür
+        if self.role in ['admin', 'top_management']:
+            return User.objects.filter(is_active=True).exclude(pk=self.pk).order_by('first_name', 'last_name')
+
+        # Department Lead rəhbərlik etdiyi BÜTÜN departamentlərdəki işçiləri görür
+        if self.role == 'department_lead':
+            # "led_departments" -> Department modelindəki 'lead' sahəsinin related_name'idir
+            led_departments = self.led_departments.all()
+            if led_departments.exists():
+                return User.objects.filter(
+                    department__in=led_departments,
+                    role__in=['manager', 'employee'],
+                    is_active=True
+                ).order_by('first_name', 'last_name')
+        
+        # Manager idarə etdiyi departamentdəki işçiləri görür
+        if self.role == 'manager':
+            try:
+                # "managed_department" -> Department modelindəki 'manager' sahəsinin related_name'idir
+                managed_dept = self.managed_department
+                return User.objects.filter(
+                    department=managed_dept,
+                    role='employee',
+                    is_active=True
+                ).order_by('first_name', 'last_name')
+            except Department.DoesNotExist:
+                # Bəzən manager heç bir departamentə təyin edilməyə bilər
+                return User.objects.none()
+
+        # Digər rolların (məsələn, Employee) tabeliyində işçi yoxdur
+        return User.objects.none()

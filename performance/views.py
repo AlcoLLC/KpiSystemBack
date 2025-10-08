@@ -14,34 +14,6 @@ from kpis.models import KPIEvaluation
 from accounts.models import User, Department
 from accounts.serializers import DepartmentSerializer
 
-def get_user_subordinates(user):
-    queryset = User.objects.none()
-
-    if user.role in ['admin', 'top_management']:
-        queryset = User.objects.filter(is_active=True).exclude(pk=user.pk)
-
-    elif user.role == 'department_lead':
-        # user bir neçə departamentə rəhbərlik edə bilər
-        led_departments = user.led_departments.all()
-        if led_departments.exists():
-            queryset = User.objects.filter(
-                department__in=led_departments,
-                role__in=['manager', 'employee'],
-                is_active=True
-            )
-
-    elif user.role == 'manager':
-        # manager yalnız bir departamentin rəhbəridir (OneToOneField)
-        if hasattr(user, 'managed_department') and user.managed_department:
-            queryset = User.objects.filter(
-                department=user.managed_department,
-                role='employee',
-                is_active=True
-            )
-    
-    return queryset.order_by('first_name', 'last_name')
-
-
 
 class SubordinateListView(APIView):
     """Giriş edən rəhbərin tabeliyində olan işçilərin siyahısını qaytarır."""
@@ -50,7 +22,7 @@ class SubordinateListView(APIView):
     def get(self, request, *args, **kwargs):
         user = request.user
         
-        subordinates = get_user_subordinates(user)
+        subordinates = user.get_subordinates()
 
         search_query = request.query_params.get('search', None)
         if search_query:
