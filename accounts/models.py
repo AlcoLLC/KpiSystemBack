@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils.text import slugify
 import itertools
-from .validators import validate_svg 
+from .validators import validate_file_type
 
 class Department(models.Model):
     name = models.CharField(max_length=255)
@@ -49,7 +49,7 @@ class User(AbstractUser):
         upload_to='profile_photos/', 
         null=True, 
         blank=True,
-        validators=[validate_svg]  # <-- Validatoru bura əlavə edirik
+        validators=[validate_file_type] 
     )
     phone_number = models.CharField(max_length=20, blank=True)
 
