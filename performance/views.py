@@ -27,7 +27,7 @@ def get_user_subordinates(user):
     
     elif user.role == 'department_lead':
         
-        led_departments = Department.objects.filter(lead=user)  
+        led_departments = Department.objects.filter(leads=user)  
         
         if led_departments.exists():
              
