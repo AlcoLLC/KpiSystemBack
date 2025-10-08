@@ -10,7 +10,7 @@ class UserSerializer(serializers.ModelSerializer):
     all_departments = serializers.SerializerMethodField()
 
     password = serializers.CharField(write_only=True, required=False)
-    profile_photo = serializers.ImageField(required=False, allow_null=True)
+    profile_photo = serializers.FileField(required=False, allow_null=True)
 
     class Meta:
         model = User
