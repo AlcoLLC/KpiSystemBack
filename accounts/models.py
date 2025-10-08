@@ -93,7 +93,7 @@ class User(AbstractUser):
             return None
         
     def get_assignable_users(self):
-        if self.is_staff or self.role == 'admin':
+        if self.role == 'admin':
             return User.objects.filter(is_active=True).exclude(pk=self.pk)
 
         if self.role == "top_management":
