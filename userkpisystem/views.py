@@ -75,9 +75,6 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='evaluable-users')
     def evaluable_users(self, request):
-        """
-        İstifadəçinin KPI iyerarxiyasına görə dəyərləndirə biləcəyi işçilərin siyahısını qaytarır.
-        """
         evaluator = request.user
         date_str = request.query_params.get('date')
 
@@ -86,24 +83,20 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         except (ValueError, TypeError):
             evaluation_date = timezone.now().date().replace(day=1)
         
-        # Bütün tabeçiliyində olanları al
-        subordinates = evaluator.get_kpi_subordinates()
-
-        # Ancaq bu siyahıdan yalnız birbaşa rəhbəri (evaluator) olanları seç
-        evaluable_users_list = [
-            user for user in subordinates if user.get_kpi_evaluator() == evaluator
-        ]
-        
+        evaluable_users_list = evaluator.get_kpi_subordinates()
         department_id = request.query_params.get('department')
         if department_id and evaluator.role == 'admin':
             try:
-                evaluable_users_list = [user for user in evaluable_users_list if user.department_id == int(department_id)]
+                # Admin üçün departamentə görə filtrləmə qüvvədə qalır
+                evaluable_users_list = evaluable_users_list.filter(department_id=int(department_id))
             except (ValueError, TypeError):
                 pass
 
         context = {'request': request, 'evaluation_date': evaluation_date}
+        # `evaluable_users_list` artıq bir QuerySet olduğu üçün `list()` çevirməsinə ehtiyac yoxdur.
         serializer = UserForEvaluationSerializer(evaluable_users_list, many=True, context=context)
         return Response(serializer.data)
+
 
     @action(detail=False, methods=['get'], url_path='my-performance-card')
     def my_performance_card(self, request):
