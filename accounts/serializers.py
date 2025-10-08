@@ -31,17 +31,22 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_all_departments(self, obj):
         departments = set()
-        
+
         if obj.department:
             departments.add(obj.department.name)
-        
+
         if hasattr(obj, 'managed_department') and obj.managed_department:
             departments.add(obj.managed_department.name)
-            
-        if hasattr(obj, 'led_departments'):
-            for dept in obj.led_departments.all():
+
+       
+        if hasattr(obj, 'led_department') and obj.led_department:
+            departments.add(obj.led_department.name)
+
+        
+        if hasattr(obj, 'top_managed_departments'):
+            for dept in obj.top_managed_departments.all():
                 departments.add(dept.name)
-                
+
         return list(departments)
 
 
