@@ -21,7 +21,7 @@ class Department(models.Model):
         limit_choices_to=models.Q(role='top_management') | models.Q(role='department_lead')
     )
 
-    def __str__(self):
+    def _str_(self):
         return self.name
 
 class User(AbstractUser):
@@ -47,7 +47,7 @@ class User(AbstractUser):
     slug = models.SlugField(unique=True, max_length=255, blank=True, null=True)
 
     
-    def __str__(self):
+    def _str_(self):
         return f"{self.first_name} {self.last_name}"
 
     def save(self, *args, **kwargs):
