@@ -93,23 +93,15 @@ class User(AbstractUser):
             return None
         
     def get_assignable_users(self):
-        """
-        Returns a queryset of users to whom this user can assign tasks based on 
-        role hierarchy and department rules.
-        """
-        # Admin/staff can assign to anyone active (except themselves).
         if self.is_staff or self.role == 'admin':
             return User.objects.filter(is_active=True).exclude(pk=self.pk)
 
-        # Top management can assign tasks to all department leads.
         if self.role == "top_management":
             return User.objects.filter(role="department_lead", is_active=True)
         
-        # A user must be in a department to assign tasks (unless they are top management).
         if not self.department:
             return User.objects.none()
 
-        # Department leads can assign to managers and employees in their department.
         if self.role == "department_lead":
             if hasattr(self, 'led_department'):
                 return User.objects.filter(
@@ -117,8 +109,7 @@ class User(AbstractUser):
                     role__in=["manager", "employee"],
                     is_active=True
                 )
-
-        # A manager can assign tasks only to employees in the department they officially manage.
+            
         if self.role == "manager":
             if hasattr(self, 'managed_department') and self.managed_department:
                 return User.objects.filter(
@@ -127,22 +118,13 @@ class User(AbstractUser):
                     is_active=True
                 )
         
-        # Employees or other roles cannot assign tasks.
         return User.objects.none()
 
     def get_direct_superior(self):
-        """
-        Finds the user's direct superior based on the defined hierarchy.
-        - Employee -> Manager (if no manager -> Dept Lead) (if no lead -> Top Management)
-        - Manager -> Dept Lead (if no lead -> Top Management)`
-        - Dept Lead -> Top Management
-        """
         if self.role in ["top_management", "admin"]:
             return None
 
-        # Department-level hierarchy check
         if self.department:
-            # For an Employee, first check for a Manager in the same department
             if self.role == "employee":
                 manager = User.objects.filter(
                     department=self.department, role="manager", is_active=True
@@ -150,7 +132,6 @@ class User(AbstractUser):
                 if manager:
                     return manager
             
-            # For an Employee (if no manager) or a Manager, check for a Department Lead
             if self.role in ["employee", "manager"]:
                 lead = User.objects.filter(
                     department=self.department, role="department_lead", is_active=True
@@ -158,19 +139,12 @@ class User(AbstractUser):
                 if lead:
                     return lead
 
-        # Fallback for all roles, or if no department-level superior is found
         return User.objects.filter(role="top_management", is_active=True).first()
     
-    # accounts/models.py -> User class
 
     def get_all_superiors(self):
-        """
-        Returns a list of all superiors in the hierarchy for this user.
-        e.g., [manager, department_lead, top_management]
-        """
         superiors = []
         current_superior = self.get_direct_superior()
-        # Add a safety limit to prevent infinite loops in case of misconfiguration
         limit = 10 
         count = 0
         while current_superior and count < limit:
@@ -179,32 +153,21 @@ class User(AbstractUser):
             count += 1
         return superiors
     
-    # accounts/models.py dosyasının sonuna (User sinfinin içinə) əlavə edin
 
     def get_kpi_evaluator(self):
-        """
-        YALNIZ KPI sistemi üçün istifadəçinin birbaşa dəyərləndiricisini tapır.
-        - Employee -> Manager (yoxdursa -> Dept Lead) (o da yoxdursa -> Top Management)
-        - Manager -> Dept Lead (yoxdursa -> Top Management)
-        - Dept Lead -> Top Management
-        """
-        # Admin və Top Management dəyərləndirilə bilməz və ya departamenti yoxdursa
         if self.role in ["admin", "top_management"] or not self.department:
             return None
 
-        # Employee üçün rəhbər axtarışı (Əvvəlcə Manager)
         if self.role == 'employee':
             manager = User.objects.filter(department=self.department, role='manager', is_active=True).first()
             if manager:
                 return manager
         
-        # Manager üçün və ya Manager-i olmayan Employee üçün rəhbər axtarışı (Sonra Dept Lead)
         if self.role in ['employee', 'manager']:
             department_lead = User.objects.filter(department=self.department, role='department_lead', is_active=True).first()
             if department_lead:
                 return department_lead
 
-        # Dept Lead üçün və ya yuxarıdakı rəhbərləri olmayanlar üçün (Ən son Top Management)
         if self.role in ['employee', 'manager', 'department_lead']:
             top_management = User.objects.filter(department=self.department, role='top_management', is_active=True).first()
             if top_management:
@@ -213,15 +176,12 @@ class User(AbstractUser):
         return None
 
     def get_kpi_subordinates(self):
-        """YALNIZ KPI sistemi üçün bu istifadəçinin görə biləcəyi bütün alt işçiləri (birbaşa və dolayısı ilə) qaytarır."""
-        # Admin bütün aktiv istifadəçiləri (top management və özü xaric) görür
         if self.role == 'admin':
             return User.objects.filter(is_active=True).exclude(Q(id=self.id) | Q(role='top_management'))
 
         if not self.department:
             return User.objects.none()
 
-        # Roluna görə eyni departamentdəki tabeçiliyində olanlar
         if self.role == 'top_management':
             return User.objects.filter(department=self.department, role__in=['department_lead', 'manager', 'employee'], is_active=True)
         elif self.role == 'department_lead':
@@ -232,7 +192,6 @@ class User(AbstractUser):
         return User.objects.none()
 
     def get_kpi_superiors(self):
-        """YALNIZ KPI sistemi üçün iyerarxiyadakı bütün rəhbərlərin siyahısını qaytarır."""
         superiors = []
         current_superior = self.get_kpi_evaluator()
         limit = 5 

@@ -167,7 +167,6 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
 
         user = self.request.user
-        # İcazə yoxlanışı: Admin, şəxsin özü və ya onun KPI rəhbərləri
         if not (user.role == 'admin' or user == evaluatee or user in evaluatee.get_kpi_superiors()):
             raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
 
