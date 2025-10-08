@@ -58,50 +58,38 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        İstifadəçinin roluna görə görə biləcəyi tapşırıqları iyerarxiyaya uyğun filterləyir.
+        Filters tasks that the user is authorized to see based on their role.
         """
         user = self.request.user
 
-        if user.is_staff and user.role == "admin":
-            queryset = Task.objects.all()
+        if user.is_staff or user.role == "admin":
+            return Task.objects.all().order_by('-created_at')
 
-        elif user.role == 'top_management':
-            queryset = Task.objects.filter(
-                Q(assignee=user) | 
-                Q(assignee__role__in=['department_lead', 'manager', 'employee'])
-            )
+        # Base query for user's own tasks
+        q_objects = Q(assignee=user)
 
+        if user.role == 'top_management':
+            q_objects |= Q(assignee__role__in=['department_lead', 'manager', 'employee'])
+        
         elif user.role == 'department_lead':
-            try:
-                user_departments = Department.objects.filter(lead=user)
-                if user_departments.exists():
-                    subordinate_tasks = Q(
-                        assignee__department__in=user_departments,
-                        assignee__role__in=['manager', 'employee']
-                    )
-                    own_tasks = Q(assignee=user)
-                    queryset = Task.objects.filter(subordinate_tasks | own_tasks)
-                else:
-                    queryset = Task.objects.filter(assignee=user)
-            except Exception:
-                queryset = Task.objects.filter(assignee=user)
-
+            # THE FIX IS HERE: Use the new many-to-many relationship
+            led_departments = user.led_departments.all()
+            if led_departments.exists():
+                q_objects |= Q(
+                    assignee__department__in=led_departments,
+                    assignee__role__in=['manager', 'employee']
+                )
+        
         elif user.role == 'manager':
             if user.department:
-                queryset = Task.objects.filter(
-                    Q(assignee__department=user.department, assignee__role='employee') |
-                    Q(assignee=user)
+                q_objects |= Q(
+                    assignee__department=user.department, 
+                    assignee__role='employee'
                 )
-            else:
-                queryset = Task.objects.filter(assignee=user)
-
-        elif user.role == 'employee':
-            queryset = Task.objects.filter(assignee=user)
         
-        else:
-            queryset = Task.objects.none()
-
-        return queryset.distinct().order_by('-created_at')
+        # For 'employee', the initial Q object is enough
+        
+        return Task.objects.filter(q_objects).distinct().order_by('-created_at')
 
     def perform_create(self, serializer):
         creator = self.request.user
