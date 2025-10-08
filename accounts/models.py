@@ -103,7 +103,7 @@ class User(AbstractUser):
             return User.objects.none()
 
         if self.role == "department_lead":
-            if hasattr(self, 'led_department'):
+            if hasattr(self, 'led_departments'):
                 return User.objects.filter(
                     department=self.department,
                     role__in=["manager", "employee"],
