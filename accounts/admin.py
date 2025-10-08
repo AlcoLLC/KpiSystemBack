@@ -1,12 +1,11 @@
+# users/admin.py
+
 from django.contrib import admin
 from .models import User, Department
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-class LedDepartmentsInline(admin.TabularInline):
-    model = Department.lead.through 
-    verbose_name = "Rəhbərlik etdiyi departament"
-    verbose_name_plural = "Rəhbərlik etdiyi departamentlər"
-    extra = 1
+# DƏYİŞİKLİK 1: LedDepartmentsInline artıq lazımsızdır, silinir.
+# class LedDepartmentsInline(admin.TabularInline): ...
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
@@ -15,15 +14,15 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ('username', 'email', 'first_name', 'last_name')
     ordering = ('id',)
 
-    def get_inlines(self, request, obj=None):
-        if obj and obj.role == 'top_management':
-            return [LedDepartmentsInline]
-        return []
+    # DƏYİŞİKLİK 2: get_inlines metodu silinir, çünki inline istifadə etmirik.
+    # def get_inlines(self, request, obj=None): ...
 
+    # Bu metod istəyə bağlı olaraq qala bilər, department sahəsini bəzi rollar üçün gizlədir.
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)
         
-        if obj and obj.role == 'top_management':
+        # Top Management və Admin birbaşa departamentə bağlı olmadığı üçün bu sahəni gizlətmək məntiqlidir
+        if obj and obj.role in ['top_management', 'admin']:
             additional_fields = ('role', 'profile_photo', 'phone_number')
         else:
             additional_fields = ('role', 'department', 'profile_photo', 'phone_number')
@@ -33,11 +32,15 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'manager', 'display_leads')
-    list_filter = ('manager',) 
+    # DƏYİŞİKLİK 3: list_display yeni sahələri göstərmək üçün yeniləndi.
+    list_display = ('id', 'name', 'manager', 'department_lead', 'display_top_management')
+    list_filter = ('manager', 'department_lead') 
     search_fields = ('name',)
-    filter_horizontal = ('lead',)
+    
+    # DƏYİŞİKLİK 4: filter_horizontal 'lead' yerinə 'top_management' üçün istifadə olunur.
+    filter_horizontal = ('top_management',)
 
-    def display_leads(self, obj):
-        return ", ".join([user.get_full_name() for user in obj.lead.all()])
-    display_leads.short_description = 'Rəhbərlər (Leads)'
+    # DƏYİŞİKLİK 5: 'display_leads' metodu 'display_top_management' ilə əvəz edildi.
+    def display_top_management(self, obj):
+        return ", ".join([user.get_full_name() for user in obj.top_management.all()])
+    display_top_management.short_description = 'Üst Rəhbərlik (Top Management)'
