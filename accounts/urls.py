@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework.routers import DefaultRouter
-from .views import UserViewSet, DepartmentViewSet, MyTokenObtainPairView, LogoutView, UserProfileView
+from .views import UserViewSet, DepartmentViewSet, MyTokenObtainPairView, LogoutView, UserProfileView, FilterableDepartmentListView
 
 router = DefaultRouter()
 router.register(r"users", UserViewSet)
@@ -14,4 +14,6 @@ urlpatterns = [
     path('refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path("", include(router.urls)),
     path('me/', UserProfileView.as_view(), name='user-profile'),
+    path('filterable-departments/', FilterableDepartmentListView.as_view(), name='filterable-departments'),
+
 ]

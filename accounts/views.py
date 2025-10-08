@@ -62,19 +62,18 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
 
 
 class FilterableDepartmentListView(APIView):
-    """
-    İstifadəçinin roluna görə filterləmədə istifadə edə biləcəyi
-    departamentlərin siyahısını qaytarır.
-    """
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         user = request.user
-        queryset = Department.objects.none() 
+        queryset = Department.objects.none()  # Default olaraq boş
 
-        if user.role in ['admin', 'top_management']:
+        if user.role == 'admin':
             queryset = Department.objects.all().order_by('name')
 
+        elif user.role == 'top_management':
+            queryset = user.top_managed_departments.all().order_by('name')
 
         serializer = DepartmentSerializer(queryset, many=True)
-        return Response(serializer.data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
