@@ -178,3 +178,68 @@ class User(AbstractUser):
             current_superior = current_superior.get_direct_superior()
             count += 1
         return superiors
+    
+    # accounts/models.py dosyasının sonuna (User sinfinin içinə) əlavə edin
+
+    def get_kpi_evaluator(self):
+        """
+        YALNIZ KPI sistemi üçün istifadəçinin birbaşa dəyərləndiricisini tapır.
+        - Employee -> Manager (yoxdursa -> Dept Lead) (o da yoxdursa -> Top Management)
+        - Manager -> Dept Lead (yoxdursa -> Top Management)
+        - Dept Lead -> Top Management
+        """
+        # Admin və Top Management dəyərləndirilə bilməz və ya departamenti yoxdursa
+        if self.role in ["admin", "top_management"] or not self.department:
+            return None
+
+        # Employee üçün rəhbər axtarışı (Əvvəlcə Manager)
+        if self.role == 'employee':
+            manager = User.objects.filter(department=self.department, role='manager', is_active=True).first()
+            if manager:
+                return manager
+        
+        # Manager üçün və ya Manager-i olmayan Employee üçün rəhbər axtarışı (Sonra Dept Lead)
+        if self.role in ['employee', 'manager']:
+            department_lead = User.objects.filter(department=self.department, role='department_lead', is_active=True).first()
+            if department_lead:
+                return department_lead
+
+        # Dept Lead üçün və ya yuxarıdakı rəhbərləri olmayanlar üçün (Ən son Top Management)
+        if self.role in ['employee', 'manager', 'department_lead']:
+            top_management = User.objects.filter(department=self.department, role='top_management', is_active=True).first()
+            if top_management:
+                return top_management
+        
+        return None
+
+    def get_kpi_subordinates(self):
+        """YALNIZ KPI sistemi üçün bu istifadəçinin görə biləcəyi bütün alt işçiləri (birbaşa və dolayısı ilə) qaytarır."""
+        # Admin bütün aktiv istifadəçiləri (top management və özü xaric) görür
+        if self.role == 'admin':
+            return User.objects.filter(is_active=True).exclude(Q(id=self.id) | Q(role='top_management'))
+
+        if not self.department:
+            return User.objects.none()
+
+        # Roluna görə eyni departamentdəki tabeçiliyində olanlar
+        if self.role == 'top_management':
+            return User.objects.filter(department=self.department, role__in=['department_lead', 'manager', 'employee'], is_active=True)
+        elif self.role == 'department_lead':
+            return User.objects.filter(department=self.department, role__in=['manager', 'employee'], is_active=True)
+        elif self.role == 'manager':
+            return User.objects.filter(department=self.department, role='employee', is_active=True)
+        
+        return User.objects.none()
+
+    def get_kpi_superiors(self):
+        """YALNIZ KPI sistemi üçün iyerarxiyadakı bütün rəhbərlərin siyahısını qaytarır."""
+        superiors = []
+        current_superior = self.get_kpi_evaluator()
+        limit = 5 
+        count = 0
+        while current_superior and count < limit:
+            if current_superior not in superiors:
+                 superiors.append(current_superior)
+            current_superior = current_superior.get_kpi_evaluator()
+            count += 1
+        return superiors
