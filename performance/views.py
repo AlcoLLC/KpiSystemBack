@@ -14,9 +14,11 @@ from kpis.models import KPIEvaluation
 from accounts.models import User, Department
 from accounts.serializers import DepartmentSerializer
 
+from accounts.models import User, Department # Make sure Department is imported
+
 def get_user_subordinates(user):
     """
-    Returns a list of users subordinate to the given user, based on their role and department.
+    Returns a list of users subordinate to the given user, based on their role.
     """
     queryset = User.objects.none()
 
@@ -24,8 +26,7 @@ def get_user_subordinates(user):
         queryset = User.objects.filter(is_active=True).exclude(pk=user.pk)
     
     elif user.role == 'department_lead':
-        # THE FIX IS HERE: Use the new many-to-many relationship
-        # 'led_departments' is the related_name you set in models.py
+         
         led_departments = user.led_departments.all()
         if led_departments.exists():
             queryset = User.objects.filter(
@@ -35,15 +36,13 @@ def get_user_subordinates(user):
             )
     
     elif user.role == 'manager':
-        try:
-            managed_department = Department.objects.get(manager=user)
+
+        if user.department:
             queryset = User.objects.filter(
-                department=managed_department,
+                department=user.department,
                 role='employee',
                 is_active=True
             )
-        except Department.DoesNotExist:
-            queryset = User.objects.none()
             
     return queryset.order_by('first_name', 'last_name')
 
