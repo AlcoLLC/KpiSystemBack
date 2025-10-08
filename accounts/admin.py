@@ -2,11 +2,19 @@ from django.contrib import admin
 from .models import User, Department
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
+class LedDepartmentsInline(admin.TabularInline):
+    model = Department.lead.through  # ManyToMany əlaqəsinin aralıq cədvəlini istifadə edir
+    verbose_name = "Rəhbərlik etdiyi departament"
+    verbose_name_plural = "Rəhbərlik etdiyi departamentlər"
+    extra = 1
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     fieldsets = BaseUserAdmin.fieldsets + (
         ('Əlavə Məlumatlar', {'fields': ('role', 'department', 'profile_photo', 'phone_number')}),
     )
+
+    inlines = [LedDepartmentsInline]
     
     # Siyahıda görünəcək sahələr
     list_display = ("id", "username", "email", "role", "first_name", "last_name", "is_staff")
