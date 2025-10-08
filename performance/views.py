@@ -15,38 +15,32 @@ from accounts.models import User, Department
 from accounts.serializers import DepartmentSerializer
 
 def get_user_subordinates(user):
-    """
-    İstifadəçinin roluna görə ona tabe olan işçilərin siyahısını qaytarır.
-    (ManyToManyField üçün yenilənmiş versiya)
-    """
     queryset = User.objects.none()
 
     if user.role in ['admin', 'top_management']:
         queryset = User.objects.filter(is_active=True).exclude(pk=user.pk)
-    
-    elif user.role == 'department_lead':
 
+    elif user.role == 'department_lead':
+        # user bir neçə departamentə rəhbərlik edə bilər
         led_departments = user.led_departments.all()
         if led_departments.exists():
-           
             queryset = User.objects.filter(
                 department__in=led_departments,
                 role__in=['manager', 'employee'],
                 is_active=True
             )
-    
+
     elif user.role == 'manager':
-        try:
-            managed_department = Department.objects.get(manager=user)
+        # manager yalnız bir departamentin rəhbəridir (OneToOneField)
+        if hasattr(user, 'managed_department') and user.managed_department:
             queryset = User.objects.filter(
-                department=managed_department,
+                department=user.managed_department,
                 role='employee',
                 is_active=True
             )
-        except Department.DoesNotExist:
-            queryset = User.objects.none()
-            
+    
     return queryset.order_by('first_name', 'last_name')
+
 
 
 class SubordinateListView(APIView):
@@ -183,8 +177,6 @@ class FilterableDepartmentListView(APIView):
             queryset = Department.objects.all()
         elif user.role == 'top_management':
             queryset = Department.objects.filter(lead=user)
-        elif user.role == 'department_lead':
-           queryset = Department.objects.filter(lead=user)
         else:
             queryset = Department.objects.none()
 
