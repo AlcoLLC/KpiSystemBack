@@ -100,12 +100,14 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True, default=None)
     role_display = serializers.CharField(source='get_role_display', read_only=True)
     selected_month_evaluation = serializers.SerializerMethodField()
+    can_evaluate = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'first_name', 'last_name', 'profile_photo',
-            'department_name', 'role_display', 'selected_month_evaluation'
+            'department_name', 'role_display', 'selected_month_evaluation',
+            'can_evaluate'
         ]
 
     def get_selected_month_evaluation(self, obj):
@@ -123,6 +125,18 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
         if evaluation:
             return UserEvaluationSerializer(evaluation).data
         return None
+    
+    def get_can_evaluate(self, obj):
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user'):
+            return False
+        
+        evaluator = request.user
+
+        if evaluator.role == 'admin':
+            return obj.role != 'top_management'
+        
+        return obj.get_kpi_evaluator() == evaluator
     
 class MonthlyScoreSerializer(serializers.ModelSerializer):
     class Meta:
