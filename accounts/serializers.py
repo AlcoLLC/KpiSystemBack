@@ -10,7 +10,7 @@ class UserSerializer(serializers.ModelSerializer):
     all_departments = serializers.SerializerMethodField()
 
     password = serializers.CharField(write_only=True, required=False)
-    profile_photo = serializers.SerializerMethodField()
+    profile_photo = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = User
@@ -20,14 +20,6 @@ class UserSerializer(serializers.ModelSerializer):
             "first_name", "last_name", "profile_photo", "phone_number", "password"
         ]
         read_only_fields = ['role_display', 'all_departments']
-
-    def get_profile_photo(self, obj):
-        request = self.context.get('request')
-        if obj.profile_photo and hasattr(obj.profile_photo, 'url'):
-            if request is not None:
-                return request.build_absolute_uri(obj.profile_photo.url)
-            return obj.profile_photo.url
-        return None
 
     def get_all_departments(self, obj):
         departments = set()
@@ -64,18 +56,13 @@ class UserSerializer(serializers.ModelSerializer):
         return value
 
     def update(self, instance, validated_data):
-        instance.email = validated_data.get('email', instance.email)
-        instance.first_name = validated_data.get('first_name', instance.first_name)
-        instance.last_name = validated_data.get('last_name', instance.last_name)
-        instance.role = validated_data.get('role', instance.role)
-        instance.phone_number = validated_data.get('phone_number', instance.phone_number)
+        # ModelSerializer'ın varsayılan update metodu çoğu alanı halleder.
+        # Sadece özel işlem gerektiren 'password' alanını yönetmemiz yeterli.
+        password = validated_data.pop('password', None)
         
-        # Handle profile photo
-        if 'profile_photo' in validated_data:
-            instance.profile_photo = validated_data.get('profile_photo')
-        
-        # Handle password
-        password = validated_data.get('password')
+        # Üst sınıfın update'ini çağırarak diğer alanların güncellenmesini sağlayın
+        instance = super().update(instance, validated_data)
+
         if password:
             instance.set_password(password)
         
