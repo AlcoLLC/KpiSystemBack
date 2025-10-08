@@ -5,11 +5,11 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     fieldsets = BaseUserAdmin.fieldsets + (
-        ('Əlavə Məlumatlar', {'fields': ('role', 'department', 'profile_photo', 'phone_number', 'leaded_departments')}),
+        ('Əlavə Məlumatlar', {'fields': ('role', 'department', 'profile_photo', 'phone_number', 'led_departments')}),
     )
     
     # Siyahıda görünəcək sahələr
-    filter_horizontal = ('leaded_departments',)
+    filter_horizontal = ('led_departments',)
     list_display = ("id", "username", "email", "role", "first_name", "last_name", "is_staff")
     list_filter = ("role", "is_staff", "is_superuser", "groups")
     search_fields = ('username', 'email', 'first_name', 'last_name')
