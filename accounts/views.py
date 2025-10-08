@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import action
 
+
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -58,3 +59,22 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user
     
+
+
+class FilterableDepartmentListView(APIView):
+    """
+    İstifadəçinin roluna görə filterləmədə istifadə edə biləcəyi
+    departamentlərin siyahısını qaytarır.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        queryset = Department.objects.none() 
+
+        if user.role in ['admin', 'top_management']:
+            queryset = Department.objects.all().order_by('name')
+
+
+        serializer = DepartmentSerializer(queryset, many=True)
+        return Response(serializer.data)

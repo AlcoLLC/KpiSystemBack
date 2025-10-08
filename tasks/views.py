@@ -25,19 +25,15 @@ def get_visible_tasks(user):
     İstifadəçinin roluna görə görə biləcəyi bütün tapşırıqları qaytarır.
     Bu, bütün view-lar üçün tək mənbədir.
     """
-    if user.is_staff or user.role == "admin":
+    if  user.role == "admin":
         return Task.objects.all()
 
-    # İstifadəçinin özü və tabeçiliyində olanların ID-lərini alırıq
     subordinate_ids = user.get_subordinates().values_list('id', flat=True)
-    
-    # Q filtri: Ya tapşırıq istifadəçinin özünə aiddir, ya da onun tabeliyində olan birinə
     query = Q(assignee=user) | Q(assignee__id__in=list(subordinate_ids))
     
     return Task.objects.filter(query).distinct()
 
 
-# === VIEWSET VƏ VIEW-LARIN YENİLƏNMİŞ VERSİYASI ===
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
@@ -177,3 +173,6 @@ class TaskVerificationView(views.APIView):
             return Response({"detail": "Etibarsız və ya vaxtı keçmiş link."}, status=status.HTTP_400_BAD_REQUEST)
         except Task.DoesNotExist:
             return Response({"detail": "Tapşırıq tapılmadı."}, status=status.HTTP_404_NOT_FOUND)
+        
+
+        
