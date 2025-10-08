@@ -6,17 +6,20 @@ from rest_framework.validators import UniqueValidator
 class UserSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=True)
     role_display = serializers.CharField(source='get_role_display', read_only=True)
-    department_name = serializers.CharField(source='department.name', read_only=True, allow_null=True)
+    
+    all_departments = serializers.SerializerMethodField()
+
     password = serializers.CharField(write_only=True, required=False)
     profile_photo = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
-            "id", "email", "role", "role_display", "department_name", 
+            "id", "email", "role", "role_display", 
+            "all_departments",  
             "first_name", "last_name", "profile_photo", "phone_number", "password"
         ]
-        read_only_fields = ['role_display', 'department_name']
+        read_only_fields = ['role_display', 'all_departments']
 
     def get_profile_photo(self, obj):
         request = self.context.get('request')
@@ -26,10 +29,25 @@ class UserSerializer(serializers.ModelSerializer):
             return obj.profile_photo.url
         return None
 
+    def get_all_departments(self, obj):
+        departments = set()
+        
+        if obj.department:
+            departments.add(obj.department.name)
+        
+        if hasattr(obj, 'managed_department') and obj.managed_department:
+            departments.add(obj.managed_department.name)
+            
+        if hasattr(obj, 'led_departments'):
+            for dept in obj.led_departments.all():
+                departments.add(dept.name)
+                
+        return list(departments)
+
+
     def validate_email(self, value):
         current_user = self.instance
         
-        # Check if email already exists, excluding current user during updates
         if current_user:
             existing_user = User.objects.filter(email=value).exclude(pk=current_user.pk).first()
         else:
