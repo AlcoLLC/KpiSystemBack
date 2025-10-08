@@ -133,24 +133,3 @@ class KpiMonthlySummaryView(APIView):
         return Response(response_data)
     
 
-
-class FilterableDepartmentListView(APIView):
-    """
-    İstifadəçinin roluna görə görə biləcəyi departamentləri qaytarır.
-    - Admin bütün departamentləri görür.
-    - Top Management yalnız rəhbəri (lead) olduğu departamentləri görür.
-    """
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, *args, **kwargs):
-        user = request.user
-
-        if user.role == 'admin':
-            queryset = Department.objects.all()
-        elif user.role == 'top_management':
-            queryset = Department.objects.filter(lead=user)
-        else:
-            queryset = Department.objects.none()
-
-        serializer = DepartmentSerializer(queryset, many=True)
-        return Response(serializer.data)
