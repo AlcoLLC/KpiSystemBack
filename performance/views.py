@@ -13,39 +13,43 @@ from datetime import datetime
 from kpis.models import KPIEvaluation
 from accounts.models import User, Department
 from accounts.serializers import DepartmentSerializer
+ 
 
 def get_user_subordinates(user):
     """
-    Returns a list of users subordinate to the given user, based on their role.
+    İstifadəçinin roluna görə ona tabe olan işçilərin siyahısını qaytarır.
     """
+    queryset = User.objects.none()  
+
     if user.role in ['admin', 'top_management']:
-        return User.objects.filter(is_active=True).exclude(pk=user.pk).order_by('first_name', 'last_name')
+        queryset = User.objects.filter(is_active=True).exclude(pk=user.pk)
     
-    # THE FIX FOR DEPARTMENT LEAD
-    if user.role == 'department_lead':
-        # Get all departments this user is a lead of
+    elif user.role == 'department_lead':
+       
         led_departments = user.led_departments.all()
+        
         if led_departments.exists():
-            return User.objects.filter(
+             
+            queryset = User.objects.filter(
                 department__in=led_departments,
                 role__in=['manager', 'employee'],
                 is_active=True
-            ).exclude(pk=user.pk).order_by('first_name', 'last_name')
+            )
+        else:
+            
+            queryset = User.objects.none()
     
-    # THE FIX FOR MANAGER
-    if user.role == 'manager':
-        try:
-            # Find the department this user manages
-            managed_department = Department.objects.get(manager=user)
-            return User.objects.filter(
-                department=managed_department,
+    elif user.role == 'manager':
+        if user.department:
+            queryset = User.objects.filter(
+                department=user.department,
                 role='employee',
                 is_active=True
-            ).exclude(pk=user.pk).order_by('first_name', 'last_name')
-        except Department.DoesNotExist:
-            return User.objects.none()
+            )
+        else:
+            queryset = User.objects.none()
             
-    return User.objects.none()
+    return queryset.order_by('first_name', 'last_name')
 
 
 class SubordinateListView(APIView):
