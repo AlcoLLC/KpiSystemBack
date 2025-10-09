@@ -90,11 +90,8 @@ class PerformanceSummaryView(APIView):
         
         return Response(summary_data)
     
+ 
 class KpiMonthlySummaryView(APIView):
-    """
-    Seçilmiş istifadəçinin müəyyən bir ay üçün olan tapşırıqlarının
-    yekun KPI ballarını və adlarını qaytarır.
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, slug, *args, **kwargs):
@@ -103,35 +100,75 @@ class KpiMonthlySummaryView(APIView):
         except User.DoesNotExist:
             return Response({"detail": "İstifadəçi tapılmadı."}, status=status.HTTP_404_NOT_FOUND)
 
-        try:
-            year = int(request.query_params.get('year', datetime.now().year))
-            month = int(request.query_params.get('month', datetime.now().month))
-        except (ValueError, TypeError):
-            return Response({"detail": "İl və ay düzgün formatda deyil."}, status=status.HTTP_400_BAD_REQUEST)
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date', timezone.now().strftime('%Y-%m-%d'))
 
-        evaluations = KPIEvaluation.objects.filter(
+        evaluations_query = KPIEvaluation.objects.filter(
             evaluatee=target_user,
-            evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION,
-            task__completed_at__year=year,
-            task__completed_at__month=month
-        ).select_related('task').order_by('task__completed_at')
+            evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+        )
 
-        # Dəyişiklik: Artıq daha detallı məlumat qaytarırıq
+        # Frontend-dən gələn parametrlərə görə filterləmə
+        if start_date_str:
+            evaluations_query = evaluations_query.filter(
+                task__completed_at__date__range=[start_date_str, end_date_str]
+            )
+        else:
+            # Köhnə məntiqlə uyğunluq üçün
+            try:
+                year = int(request.query_params.get('year', datetime.now().year))
+                month = int(request.query_params.get('month', datetime.now().month))
+                evaluations_query = evaluations_query.filter(
+                    task__completed_at__year=year,
+                    task__completed_at__month=month
+                )
+            except (ValueError, TypeError):
+                return Response({"detail": "İl və ay düzgün formatda deyil."}, status=status.HTTP_400_BAD_REQUEST)
+
+        evaluations = evaluations_query.select_related('task').order_by('task__completed_at')
+
         evaluations_data = [
             {
                 "day": evaluation.task.completed_at.day,
                 "score": evaluation.final_score,
-                "task_title": evaluation.task.title
+                "task_title": evaluation.task.title,
+                # Qrafikdə istifadə etmək üçün tamamlanma tarixini əlavə edirik
+                "completed_at": evaluation.task.completed_at.isoformat() 
             }
-            for evaluation in evaluations
+            for evaluation in evaluations if evaluation.task.completed_at
         ]
 
         response_data = {
-            'year': year,
-            'month': month,
             'evaluations': evaluations_data,
         }
-
         return Response(response_data)
     
 
+class UserKpiScoreView(APIView):
+    """
+    Bir istifadəçinin son 90 gündəki ortalama yekun KPI balını qaytarır.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, slug, *args, **kwargs):
+        try:
+            target_user = User.objects.get(slug=slug)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # İcazə yoxlaması (yalnız admin, istifadəçinin özü və ya rəhbərləri baxa bilər)
+        if not (request.user == target_user or request.user.role == 'admin' or request.user in target_user.get_all_superiors()):
+             return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        three_months_ago = timezone.now() - timedelta(days=90)
+
+        # Son 90 gündəki tamamlanmış və rəhbər tərəfindən qiymətləndirilmiş tapşırıqları tapırıq
+        aggregation = KPIEvaluation.objects.filter(
+            evaluatee=target_user,
+            evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION,
+            task__completed_at__gte=three_months_ago
+        ).aggregate(average_score=Avg('final_score'))
+
+        average_score = aggregation.get('average_score') or 0
+
+        return Response({'average_kpi_score': round(average_score, 1)})
