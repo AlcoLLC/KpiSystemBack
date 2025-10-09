@@ -54,43 +54,48 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
     def evaluable_users(self, request):
         evaluator = request.user
         date_str = request.query_params.get('date')
+        department_id = request.query_params.get('department')
 
         try:
             evaluation_date = datetime.strptime(date_str, '%Y-%m').date().replace(day=1) if date_str else timezone.now().date().replace(day=1)
         except (ValueError, TypeError):
             evaluation_date = timezone.now().date().replace(day=1)
         
-        all_subordinates = evaluator.get_kpi_subordinates().select_related('department')
+        users_to_show = []
 
-        evaluated_this_month_ids = set(
-            UserEvaluation.objects.filter(
-                evaluation_date=evaluation_date
-            ).values_list('evaluatee_id', flat=True)
-        )
+        if evaluator.role == 'admin':
+            users_to_show = User.objects.filter(
+                is_active=True
+            ).exclude(
+                Q(id=evaluator.id) | Q(role__in=['admin', 'top_management'])
+            ).select_related('department')
 
-        final_users_to_show = []
-        for subordinate in all_subordinates:
-            if subordinate.get_kpi_evaluator() == evaluator:
-                final_users_to_show.append(subordinate)
-                continue 
+            if department_id:
+                try:
+                    department_id_int = int(department_id)
+                    users_to_show = users_to_show.filter(department_id=department_id_int)
+                except (ValueError, TypeError):
+                    pass
+        else:
+            all_subordinates = evaluator.get_kpi_subordinates().select_related('department')
+            
+            evaluated_this_month_ids = set(
+                UserEvaluation.objects.filter(
+                    evaluation_date=evaluation_date
+                ).values_list('evaluatee_id', flat=True)
+            )
 
-            if subordinate.id in evaluated_this_month_ids:
-                final_users_to_show.append(subordinate)
-
-        department_id = request.query_params.get('department')
-        if department_id and evaluator.role == 'admin':
-            try:
-                department_id_int = int(department_id)
-                final_users_to_show = [
-                    user for user in final_users_to_show if user.department_id == department_id_int
-                ]
-            except (ValueError, TypeError):
-                pass
+            for subordinate in all_subordinates:
+                if subordinate.get_kpi_evaluator() == evaluator:
+                    users_to_show.append(subordinate)
+                    continue 
+                if subordinate.id in evaluated_this_month_ids:
+                    users_to_show.append(subordinate)
 
         context = {'request': request, 'evaluation_date': evaluation_date}
-        serializer = UserForEvaluationSerializer(final_users_to_show, many=True, context=context)
+        serializer = UserForEvaluationSerializer(users_to_show, many=True, context=context)
         return Response(serializer.data)
-
+    
     @action(detail=False, methods=['get'], url_path='my-performance-card')
     def my_performance_card(self, request):
         user = request.user
