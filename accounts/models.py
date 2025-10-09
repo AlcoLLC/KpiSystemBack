@@ -3,6 +3,7 @@ from django.contrib.auth.models import AbstractUser
 from django.utils.text import slugify
 import itertools
 from .validators import validate_file_type
+from django.db.models import Q
 
 class Department(models.Model):
     name = models.CharField(max_length=255)
@@ -174,17 +175,14 @@ class User(AbstractUser):
         if self.role in ["admin", "top_management"] or not self.department:
             return None
 
-        # Employee-nin birinci rəhbəri meneceridir
         if self.role == 'employee':
             if self.department.manager:
                 return self.department.manager
         
-        # Employee və Manager-in rəhbəri departament lideridir
         if self.role in ['employee', 'manager']:
             if self.department.department_lead:
                 return self.department.department_lead
 
-        # Hər kəsin rəhbəri (əgər varsa) top management-dən biridir
         if self.department.top_management.exists():
             return self.department.top_management.first()
         
@@ -192,17 +190,34 @@ class User(AbstractUser):
 
     def get_kpi_subordinates(self):
         if self.role == 'admin':
-            return User.objects.filter(is_active=True).exclude(Q(id=self.id) | Q(role='top_management'))
+            return User.objects.filter(is_active=True).exclude(
+                Q(id=self.id) | Q(role__in=['admin', 'top_management'])
+            )
 
         if not self.department:
             return User.objects.none()
 
         if self.role == 'top_management':
-            return User.objects.filter(department=self.department, role__in=['department_lead', 'manager', 'employee'], is_active=True)
+            managed_departments = self.top_managed_departments.all()
+            if managed_departments.exists():
+                return User.objects.filter(
+                    department__in=managed_departments, 
+                    role__in=['department_lead', 'manager', 'employee'], 
+                    is_active=True
+                )
+        
         elif self.role == 'department_lead':
-            return User.objects.filter(department=self.department, role__in=['manager', 'employee'], is_active=True)
+             try:
+                led_dept = self.led_department
+                return User.objects.filter(department=led_dept, role__in=['manager', 'employee'], is_active=True)
+             except Department.DoesNotExist:
+                return User.objects.none()
         elif self.role == 'manager':
-            return User.objects.filter(department=self.department, role='employee', is_active=True)
+            try:
+                managed_dept = self.managed_department
+                return User.objects.filter(department=managed_dept, role='employee', is_active=True)
+            except Department.DoesNotExist:
+                return User.objects.none()
         
         return User.objects.none()
 
@@ -220,14 +235,10 @@ class User(AbstractUser):
     
 
     def get_subordinates(self):
-        """
-        İstifadəçinin roluna əsasən ona birbaşa tabe olan bütün işçiləri qaytarır.
-        """
         if self.role == 'admin':
             return User.objects.filter(is_active=True).exclude(pk=self.pk).order_by('first_name', 'last_name')
 
         if self.role == 'top_management':
-            # Bu istifadəçinin rəhbərlik etdiyi BÜTÜN departamentləri götürürük
             managed_departments = self.top_managed_departments.all()
             if managed_departments.exists():
                 return User.objects.filter(
@@ -238,7 +249,6 @@ class User(AbstractUser):
         
         if self.role == 'department_lead':
             try:
-                # Bu istifadəçinin rəhbərlik etdiyi tək departamenti götürürük
                 led_dept = self.led_department 
                 return User.objects.filter(
                     department=led_dept,
