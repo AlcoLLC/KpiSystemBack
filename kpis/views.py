@@ -17,39 +17,23 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
     serializer_class = KPIEvaluationSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    # DƏYİŞİKLİK 1: `get_queryset` metodu `user.get_subordinates()` istifadə edərək sadələşdirildi.
     def get_queryset(self):
-        """
-        İstifadəçinin görməyə icazəsi olan dəyərləndirmələri siyahılayır:
-        - Özünə aid olanlar (verdiyi və ya aldığı).
-        - İyerarxik olaraq ona tabe olan işçilərin dəyərləndirmələri.
-        """
         user = self.request.user
         if user.is_staff or user.role == 'admin':
             return self.queryset.select_related('task', 'evaluator', 'evaluatee')
 
-        # Modeldəki `get_subordinates` metodundan bütün tabeliyində olanları alırıq
         subordinate_ids = user.get_subordinates().values_list('id', flat=True)
 
-        # Mənim özümə aid olan VƏ YA mənim tabeliyimdə olanlara aid olan dəyərləndirmələr
         q_objects = Q(evaluatee=user) | Q(evaluator=user) | Q(evaluatee_id__in=subordinate_ids)
         
         return self.queryset.filter(q_objects).distinct().select_related('task', 'evaluator', 'evaluatee')
 
-    # DƏYİŞİKLİK 2: ViewSet içindəki bu metod artıq lazımsızdır. User modelindəki metod istifadə olunacaq.
-    # def get_direct_superior(self, employee): ... (BU METOD SİLİNİR)
-
     def can_evaluate_user(self, evaluator, evaluatee):
-        """
-        Bir istifadəçinin digərini dəyərləndirib-dəyərləndirə bilməyəcəyini yoxlayır.
-        """
         if evaluator == evaluatee:
-            return False # Heç kim özünü (üst olaraq) dəyərləndirə bilməz
+            return False 
             
         if evaluatee.role == 'top_management':
-            return False # Top management dəyərləndirilmir
-            
-        # DƏYİŞİKLİK 3: `User` modelindəki etibarlı metod çağırılır.
+            return False 
         direct_superior = evaluatee.get_direct_superior()
         
         if evaluator.role == 'admin':
@@ -58,21 +42,14 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         return direct_superior and direct_superior.id == evaluator.id
 
     def can_view_evaluation_results(self, viewer, evaluatee):
-        """
-        İstifadəçinin dəyərləndirmə nəticələrinə baxa biləcəyini yoxlayır.
-        """
         if viewer == evaluatee or viewer.role == 'admin':
             return True
 
-        # `get_all_superiors` metodu artıq User modelində olduğu üçün bu hissə düzgün işləyir.
         all_superiors = evaluatee.get_all_superiors()
         if viewer in all_superiors:
             return True
 
         return False
-    
-    # DƏYİŞİKLİK 4: Bu metod artıq lazımsızdır, çünki `user.get_subordinates()` var.
-    # def get_user_subordinates(self, user): ... (BU METOD SİLİNİR)
 
     def perform_create(self, serializer):
         evaluator = self.request.user
@@ -82,7 +59,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         if evaluatee.role == 'top_management':
             raise PermissionDenied("Top management tapşırıqları dəyərləndirilə bilməz.")
 
-        # Öz Dəyərləndirmə Məntiqi
         if evaluator == evaluatee:
             if KPIEvaluation.objects.filter(
                 task=task, evaluatee=evaluatee, evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
@@ -93,11 +69,8 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                 evaluator=evaluator, 
                 evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
             )
-            # send_kpi_evaluation_request_email(instance) # E-mail göndərmə
-        
-        # Üst Dəyərləndirmə Məntiqi
+
         else:
-            # `evaluatee.get_direct_superior()` metodu User modelindən çağırılır və düzgün işləyir.
             direct_superior = evaluatee.get_direct_superior()
             
             if not (direct_superior and direct_superior == evaluator) and not evaluator.role == 'admin':
@@ -128,16 +101,10 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             'received': KPIEvaluationSerializer(received_evaluations, many=True).data
         })
 
-    # DƏYİŞİKLİK 5: `kpi_dashboard_tasks` metodu da `user.get_subordinates()` istifadə edərək yenidən yazıldı.
     @action(detail=False, methods=['get'], url_path='dashboard-tasks')
     def kpi_dashboard_tasks(self, request):
-        """
-        İstifadəçinin özünün və iyerarxik olaraq ona tabe olan hər kəsin
-        tamamlanmış tapşırıqlarını və dəyərləndirmə statuslarını qaytarır.
-        """
         user = request.user
         
-        # Mən və mənim bütün tabeliyimdə olanlar
         subordinate_ids = list(user.get_subordinates().values_list('id', flat=True))
         visible_user_ids = subordinate_ids + [user.id]
 
@@ -161,12 +128,8 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='pending-for-me')
     def my_subordinates_pending_evaluations(self, request):
-        """
-        Hazırkı istifadəçinin (rəhbər) dəyərləndirməsini gözləyən tapşırıqları siyahılayır.
-        """
         user = request.user
         
-        # `get_direct_superior` metodu düzgün işlədiyi üçün bu məntiq dəyişməz qalır və düzgündür.
         all_active_users = User.objects.filter(is_active=True).exclude(pk=user.pk)
         my_direct_subordinates_ids = [
             sub.id for sub in all_active_users if sub.get_direct_superior() == user
@@ -204,8 +167,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         serializer = TaskSerializer(pending_for_me, many=True, context={'request': request})
         return Response(serializer.data)
         
-    # (task_evaluations, evaluation_summary, partial_update metodları olduğu kimi qalır, çünki onlar artıq düzgün məntiqə əsaslanır)
-    # ... digər action metodları ...
     @action(detail=False, methods=['get'])
     def task_evaluations(self, request):
         task_id = request.query_params.get('task_id')
@@ -215,7 +176,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         
         evaluations = self.get_queryset().filter(task_id=task_id)
         
-        # Görmə icazəsi yoxlaması
         filtered_evaluations = []
         for evaluation in evaluations:
             if self.can_view_evaluation_results(self.request.user, evaluation.evaluatee):
@@ -273,7 +233,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         new_score = request.data.get('score')
         new_comment = request.data.get('comment')
 
-        # --- PERMISSION CHECKS ---
         is_self_eval = instance.evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION
         is_superior_eval = instance.evaluation_type == KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
 
@@ -289,7 +248,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             if superior_eval_exists:
                 raise PermissionDenied("Rəhbər dəyərləndirməsi edildikdən sonra öz dəyərləndirmənizi redaktə edə bilməzsiniz.")
 
-        # --- UPDATE LOGIC ---
         old_score = None
         
         if new_score is not None:
@@ -323,3 +281,113 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         instance.updated_by = user
         instance.save()
         return Response(self.get_serializer(instance).data)
+    
+    @action(detail=False, methods=['get'], url_path='need-self-evaluation')
+    def need_self_evaluation(self, request):
+        user = request.user
+        
+        self_eval_exists = KPIEvaluation.objects.filter(
+            task=OuterRef('pk'),
+            evaluatee=user,
+            evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+        )
+        
+        tasks = Task.objects.annotate(
+            has_self_eval=Exists(self_eval_exists)
+        ).filter(
+            assignee=user,
+            status='DONE',
+            has_self_eval=False
+        ).exclude(
+            assignee__role='top_management'
+        ).select_related('assignee', 'created_by').order_by('-completed_at')
+        
+        serializer = TaskSerializer(tasks, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+    @action(detail=False, methods=['get'], url_path='waiting-superior-evaluation')
+    def waiting_superior_evaluation(self, request):
+        user = request.user
+        
+        self_eval_exists = KPIEvaluation.objects.filter(
+            task=OuterRef('pk'),
+            evaluatee=user,
+            evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+        )
+        
+        superior_eval_exists = KPIEvaluation.objects.filter(
+            task=OuterRef('pk'),
+            evaluatee=user,
+            evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+        )
+        
+        tasks = Task.objects.annotate(
+            has_self_eval=Exists(self_eval_exists),
+            has_superior_eval=Exists(superior_eval_exists)
+        ).filter(
+            assignee=user,
+            status='DONE',
+            has_self_eval=True,
+            has_superior_eval=False
+        ).exclude(
+            assignee__role='top_management'
+        ).select_related('assignee', 'created_by').order_by('-completed_at')
+        
+        serializer = TaskSerializer(tasks, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+    @action(detail=False, methods=['get'], url_path='i-evaluated')
+    def i_evaluated(self, request):
+        user = request.user
+        
+        evaluation_task_ids = KPIEvaluation.objects.filter(
+            evaluator=user
+        ).values_list('task_id', flat=True).distinct()
+        
+        tasks = Task.objects.filter(
+            id__in=evaluation_task_ids,
+            status='DONE'
+        ).exclude(
+            assignee__role='top_management'
+        ).select_related('assignee', 'created_by').prefetch_related(
+            'evaluations'
+        ).order_by('-completed_at')
+        
+        serializer = TaskSerializer(tasks, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+    @action(detail=False, methods=['get'], url_path='subordinates-need-evaluation')
+    def subordinates_need_evaluation(self, request):
+        user = request.user
+        
+        subordinate_ids = list(user.get_subordinates().values_list('id', flat=True))
+        visible_user_ids = subordinate_ids + [user.id]
+        
+        self_eval_exists = KPIEvaluation.objects.filter(
+            task=OuterRef('pk'),
+            evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+        )
+        
+        superior_eval_exists = KPIEvaluation.objects.filter(
+            task=OuterRef('pk'),
+            evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+        )
+        
+        tasks = Task.objects.annotate(
+            has_self_eval=Exists(self_eval_exists),
+            has_superior_eval=Exists(superior_eval_exists)
+        ).filter(
+            Q(assignee_id__in=visible_user_ids),
+            status='DONE'
+        ).exclude(
+            Q(has_self_eval=True, has_superior_eval=True) |
+            Q(assignee__role='top_management')
+        ).select_related('assignee', 'created_by').prefetch_related(
+            'evaluations'
+        ).order_by('-completed_at')
+        
+        serializer = TaskSerializer(tasks, many=True, context={'request': request})
+        return Response(serializer.data)
