@@ -8,13 +8,11 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
     evaluatee_id = serializers.IntegerField(write_only=True)
     evaluator_id = serializers.IntegerField(write_only=True, required=False)
     
-    # Read-only fields for display
     task = serializers.SerializerMethodField(read_only=True)
     evaluator = serializers.SerializerMethodField(read_only=True)
     evaluatee = serializers.SerializerMethodField(read_only=True)
     
-    # Score fields
-    score = serializers.IntegerField(write_only=True)  # Frontend-dən gələn skor
+    score = serializers.IntegerField(write_only=True) 
     
     class Meta:
         model = KPIEvaluation
@@ -70,14 +68,12 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
         if not score:
             raise serializers.ValidationError({'score': 'Skor tələb olunur.'})
 
-        # Task mövcudluğunu yoxla
         try:
             task = Task.objects.get(id=task_id)
             data['task'] = task
         except Task.DoesNotExist:
             raise serializers.ValidationError({'task_id': 'Belirtilen görev bulunamadı.'})
 
-        # Evaluatee mövcudluğunu yoxla
         try:
             evaluatee = User.objects.get(id=evaluatee_id)
             data['evaluatee'] = evaluatee
@@ -87,16 +83,13 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        # Extract write-only fields
         task = validated_data.pop('task')
         evaluatee = validated_data.pop('evaluatee')
         score = validated_data.pop('score')
         
-        # Set the task and evaluatee
         validated_data['task'] = task
         validated_data['evaluatee'] = evaluatee
         
-        # Set score based on evaluation type
         evaluation_type = validated_data.get('evaluation_type')
         if evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION:
             validated_data['self_score'] = score
