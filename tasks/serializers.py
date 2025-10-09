@@ -55,7 +55,6 @@ class TaskSerializer(serializers.ModelSerializer):
             return UserSerializer(obj.created_by, context=self.context).data
         return None
 
-# Digər serializer-lərə toxunmuruq
 class TaskAssigneeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -70,11 +69,7 @@ class TaskAssigneeSerializer(serializers.ModelSerializer):
         return representation
 
 class TaskUserSerializer(serializers.ModelSerializer):
-    full_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'full_name', 'role', 'department']
-
-    def get_full_name(self, obj):
-        return obj.get_full_name()
+        fields = ['id', 'first_name', 'last_name', 'role']
