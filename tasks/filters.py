@@ -3,13 +3,19 @@ from django.db.models import Q, F
 from django.utils import timezone
 from .models import Task
 
+STATUS_CHOICES = Task.STATUS_CHOICES 
+
 class TaskFilter(filters.FilterSet):
+    status = filters.MultipleChoiceFilter(
+        choices=STATUS_CHOICES,
+    )
     start_date_after = filters.DateFilter(field_name='start_date', lookup_expr='gte')
     due_date_before = filters.DateFilter(field_name='due_date', lookup_expr='lte')
     department = filters.NumberFilter(field_name='assignee__department__id')
     search = filters.CharFilter(method='filter_by_search', label="Search in title and description")
     exclude_assignee = filters.NumberFilter(method='filter_exclude_assignee', label="Exclude assignee by ID")
     overdue = filters.BooleanFilter(method='filter_overdue', label='Gecikmiş tapşırıqlar')
+
 
     class Meta:
         model = Task

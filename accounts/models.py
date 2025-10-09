@@ -39,10 +39,10 @@ class Department(models.Model):
 class User(AbstractUser):
     ROLE_CHOICES = [
         ("admin", "Admin"),
-        ("top_management", "Top Management"),
-        ("department_lead", "Department Lead"),
-        ("manager", "Manager"),
-        ("employee", "Employee"),
+        ("top_management", "Yuxarı İdarəetmə"),
+        ("department_lead", "Departament Rəhbəri"),
+        ("manager", "Menecer"),
+        ("employee", "İşçi"),
     ]
     
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="employee")

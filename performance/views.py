@@ -37,11 +37,14 @@ class SubordinateListView(APIView):
         serializer = SubordinateSerializer(subordinates, many=True, context={'request': request})
         return Response(serializer.data)
 
+# performance/views.py
+
+# ... importlar ...
+
 class PerformanceSummaryView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, slug=None, *args, **kwargs):
-         
         if slug == 'me' or slug is None:
             target_user = request.user
         else:
@@ -50,39 +53,38 @@ class PerformanceSummaryView(APIView):
             except User.DoesNotExist:
                 return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
         
-        if request.user.role != 'admin' and target_user.role == 'top_management' and request.user != target_user:
-             return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
         all_tasks = Task.objects.filter(assignee=target_user)
         done_tasks = all_tasks.filter(status='DONE')
-        active_tasks = all_tasks.filter(status__in=['TODO', 'IN_PROGRESS'])
         today = timezone.now().date()
+        
+        
+        tasks_with_due_date = done_tasks.filter(due_date__isnull=False)
+        on_time_completed_count = tasks_with_due_date.filter(completed_at__date__lte=F('due_date')).count()
+        
+        total_relevant_completed = tasks_with_due_date.count()
 
-         
-        completed_count = done_tasks.count()
-        overdue_count = all_tasks.filter(
-            due_date__lt=today, 
+        current_overdue_count = all_tasks.filter(
+            due_date__lt=today,
             status__in=['PENDING', 'TODO', 'IN_PROGRESS']
         ).count()
         
-         
-        tasks_with_due_date = done_tasks.filter(due_date__isnull=False)
-        on_time_completed_count = tasks_with_due_date.filter(completed_at__date__lte=F('due_date')).count()
-        total_relevant_completed = tasks_with_due_date.count()
-        on_time_rate = (on_time_completed_count / total_relevant_completed * 100) if total_relevant_completed > 0 else 100
+        total_performance_base = total_relevant_completed + current_overdue_count
 
-        # Prioritetə görə tamamlanmış tapşırıqlar
-        priority_completion = done_tasks.values('priority').annotate(count=Count('id')).order_by('priority')
-
+        if total_performance_base > 0:
+            on_time_rate = (on_time_completed_count / total_performance_base) * 100
+        else:
+            on_time_rate = 0 
+        
         summary_data = {
             "user": SubordinateSerializer(target_user, context={'request': request}).data,
             "task_performance": {
                 "total_tasks": all_tasks.count(),
-                "completed_count": completed_count,
-                "active_count": active_tasks.count(),
-                "overdue_count": overdue_count,
+                "completed_count": done_tasks.count(),
+                "active_count": all_tasks.filter(status__in=['TODO', 'IN_PROGRESS']).count(),
+                "overdue_count": current_overdue_count, 
                 "on_time_rate": round(on_time_rate, 1),
-                "priority_completion": list(priority_completion),
+                "priority_completion": list(done_tasks.values('priority').annotate(count=Count('id')).order_by('priority')),
             },
         }
         
