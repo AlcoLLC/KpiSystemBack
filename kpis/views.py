@@ -391,3 +391,46 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         
         serializer = TaskSerializer(tasks, many=True, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='completed-evaluations')
+    def completed_evaluations(self, request):
+        user = request.user
+        
+        subordinate_ids = list(user.get_subordinates().values_list('id', flat=True))
+        visible_user_ids = subordinate_ids + [user.id]
+
+        evaluated_by_me_ids = KPIEvaluation.objects.filter(
+            evaluator=user,
+            evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+        ).values_list('task_id', flat=True)
+
+        self_eval_exists = KPIEvaluation.objects.filter(
+            task=OuterRef('pk'),
+            evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+        )
+        
+        superior_eval_exists = KPIEvaluation.objects.filter(
+            task=OuterRef('pk'),
+            evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+        )
+        
+        tasks = Task.objects.annotate(
+            has_self_eval=Exists(self_eval_exists),
+            has_superior_eval=Exists(superior_eval_exists)
+        ).filter(
+            assignee_id__in=visible_user_ids,
+            status='DONE',
+            has_self_eval=True,
+            has_superior_eval=True
+        ).exclude(
+            id__in=evaluated_by_me_ids 
+        ).exclude(
+            assignee=user
+        ).exclude(
+            assignee__role='top_management'
+        ).select_related('assignee', 'created_by').prefetch_related(
+            'evaluations'
+        ).order_by('-completed_at')
+        
+        serializer = TaskSerializer(tasks, many=True, context={'request': request})
+        return Response(serializer.data)
