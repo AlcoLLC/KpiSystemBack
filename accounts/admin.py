@@ -1,12 +1,17 @@
 from django.contrib import admin
-from .models import User, Department
+from .models import User, Department, Position
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+
+@admin.register(Position)
+class PositionAdmin(admin.ModelAdmin):
+    list_display = ('name',)
+    search_fields = ('name',)
 
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    list_display = ("id", "username","email",  "role","department", "first_name", "last_name", "is_staff")
-    list_filter = ("role", "is_staff", "is_superuser", "groups")
+    list_display = ("id", "username", "email", 'position', "role","department", "first_name", "last_name", "is_staff")
+    list_filter = ("role", "is_staff", 'position', "is_superuser", "groups")
     search_fields = ('username', 'email', 'first_name', 'last_name')
     ordering = ('id',)
 
