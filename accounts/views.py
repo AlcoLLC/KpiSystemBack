@@ -9,12 +9,17 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import action
 from .permissions import IsAdminUser  
+from .filters import UserFilter
+from django_filters.rest_framework import DjangoFilterBackend
 
 
 class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all()
+    queryset = User.objects.all().select_related('department', 'position').order_by('first_name', 'last_name')
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAdminUser]
+
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = UserFilter
 
     @action(detail=False, methods=['get', 'put', 'patch'], url_path='me')
     def me(self, request, *args, **kwargs):
@@ -31,9 +36,11 @@ class UserViewSet(viewsets.ModelViewSet):
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
-    queryset = Department.objects.all()
+    queryset = Position.objects.all().order_by('name')
     serializer_class = DepartmentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAdminUser]
+
+    search_fields = ['name']
 
 
 class MyTokenObtainPairView(TokenObtainPairView):
@@ -90,10 +97,6 @@ class PositionViewSet(viewsets.ModelViewSet):
 
  
 class AvailableDepartmentsForRoleView(APIView):
-    """
-    User formasında rol seçiminə görə uyğun departamentləri qaytarır.
-    Məsələn, 'department_lead' üçün yalnız rəhbəri olmayan departamentlər.
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
@@ -102,6 +105,8 @@ class AvailableDepartmentsForRoleView(APIView):
 
         if role == 'department_lead':
             queryset = Department.objects.filter(department_lead__isnull=True)
-        
+        elif role == 'manager':
+            queryset = Department.objects.filter(manager__isnull=True)
+
         serializer = DepartmentSerializer(queryset, many=True)
         return Response(serializer.data)

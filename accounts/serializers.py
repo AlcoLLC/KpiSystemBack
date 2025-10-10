@@ -88,9 +88,28 @@ class UserSerializer(serializers.ModelSerializer):
     
 
 class DepartmentSerializer(serializers.ModelSerializer):
+ 
+    manager = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(role='manager'), required=False, allow_null=True
+    )
+    department_lead = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(role='department_lead'), required=False, allow_null=True
+    )
+    
     class Meta:
         model = Department
-        fields = "__all__"
+        fields = ['id', 'name', 'manager', 'department_lead', 'top_management']
+
+    def update(self, instance, validated_data):
+        new_lead = validated_data.get('department_lead')
+        if new_lead:
+            Department.objects.filter(department_lead=new_lead).update(department_lead=None)
+        
+        new_manager = validated_data.get('manager')
+        if new_manager:
+            Department.objects.filter(manager=new_manager).update(manager=None)
+
+        return super().update(instance, validated_data)
 
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
