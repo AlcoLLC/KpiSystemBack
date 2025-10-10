@@ -7,7 +7,7 @@ from accounts.serializers import UserSerializer
 class TaskSerializer(serializers.ModelSerializer):
     assignee_details = serializers.StringRelatedField(source='assignee', read_only=True)
     created_by_details = serializers.StringRelatedField(source='created_by', read_only=True)
-    assignee = serializers.PrimaryKeyRelatedField(queryset=User.objects.all()) # Bu, yazmaq üçün qalır
+    assignee = serializers.PrimaryKeyRelatedField(queryset=User.objects.all()) 
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     priority_display = serializers.CharField(source='get_priority_display', read_only=True)
     evaluations = KPIEvaluationSerializer(many=True, read_only=True)
@@ -44,7 +44,6 @@ class TaskSerializer(serializers.ModelSerializer):
             'created_at',
         ]
 
-    # --- YENİ ƏLAVƏ EDİLƏN METODLAR ---
     def get_assignee_obj(self, obj):
         if obj.assignee:
             return UserSerializer(obj.assignee, context=self.context).data
@@ -58,7 +57,7 @@ class TaskSerializer(serializers.ModelSerializer):
 class TaskAssigneeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'first_name', 'last_name', 'profile_photo']
+        fields = ['id', 'first_name', 'last_name', 'position', 'profile_photo']
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -72,4 +71,4 @@ class TaskUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'first_name', 'last_name', 'role']
+        fields = ['id', 'first_name', 'last_name', 'position', 'role']
