@@ -26,8 +26,6 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
     def validate_evaluation_date(self, value):
         return value.replace(day=1)
 
-    # kpi/serializers.py -> UserEvaluationSerializer -> validate metodu
-
     def validate(self, data):
         request = self.context.get('request')
         evaluator = request.user
@@ -40,18 +38,14 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         if evaluator == evaluatee:
             raise serializers.ValidationError("İstifadəçilər özlərini dəyərləndirə bilməz.")
         
-        # --- DƏYİŞİKLİK BURADADIR ---
-        # Köhnə get_direct_superior() əvəzinə get_kpi_evaluator() istifadə edilir
         kpi_evaluator = evaluatee.get_kpi_evaluator()
         is_admin = evaluator.role == 'admin'
 
-        # Yoxlama: Dəyərləndirən şəxs ya Admin, ya da işçinin KPI sistemindəki birbaşa rəhbəri olmalıdır
         if not is_admin and kpi_evaluator != evaluator:
             raise serializers.ValidationError(
                 "Yalnız işçinin KPI iyerarxiyasındakı birbaşa rəhbəri və ya Admin dəyərləndirmə edə bilər."
             )
-        # --- DƏYİŞİKLİK SONA ÇATDI ---
-
+        
         evaluation_date = data['evaluation_date'].replace(day=1)
         
         qs = UserEvaluation.objects.filter(
@@ -68,6 +62,23 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
             
         data['evaluatee'] = evaluatee
         return data
+    def get_user_details(self, user_obj):
+        if user_obj:
+            return {
+                'id': user_obj.id,
+                'full_name': user_obj.get_full_name(),
+                'position': user_obj.position,
+            }
+        return None
+    
+    def get_evaluator(self, obj):
+        return self.get_user_details(obj.evaluator)
+
+    def get_evaluatee(self, obj):
+        return self.get_user_details(obj.evaluatee)
+
+    def get_updated_by(self, obj):
+        return self.get_user_details(obj.updated_by)
     
     def update(self, instance, validated_data):
         request = self.context.get('request')
@@ -107,7 +118,7 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'first_name', 'last_name', 'profile_photo',
             'department_name', 'role_display', 'selected_month_evaluation',
-            'can_evaluate'
+            'can_evaluate', 'position',
         ]
 
     def get_selected_month_evaluation(self, obj):
