@@ -83,7 +83,6 @@ class User(AbstractUser):
 
     @property
     def assigner_role(self):
-        """Determines the superior role based on the user's role."""
         role_hierarchy = {
             "employee": "Manager or Department Lead",
             "manager": "Department Lead",
