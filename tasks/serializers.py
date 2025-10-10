@@ -11,6 +11,7 @@ class TaskSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     priority_display = serializers.CharField(source='get_priority_display', read_only=True)
     evaluations = KPIEvaluationSerializer(many=True, read_only=True)
+    position_name = serializers.CharField(source='position.name', read_only=True, default=None)
 
     assignee_obj = serializers.SerializerMethodField(read_only=True)
     created_by_obj = serializers.SerializerMethodField(read_only=True)
@@ -25,6 +26,7 @@ class TaskSerializer(serializers.ModelSerializer):
             'priority',
             'assignee', 
             'assignee_details', 
+            'position_name',
             'created_by',
             'created_by_details',
             'start_date',
@@ -55,9 +57,10 @@ class TaskSerializer(serializers.ModelSerializer):
         return None
 
 class TaskAssigneeSerializer(serializers.ModelSerializer):
+    position_name = serializers.CharField(source='position.name', read_only=True, default=None)
     class Meta:
         model = User
-        fields = ['id', 'first_name', 'last_name', 'position', 'profile_photo']
+        fields = ['id', 'first_name', 'last_name', 'position_name', 'profile_photo']
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -68,7 +71,8 @@ class TaskAssigneeSerializer(serializers.ModelSerializer):
         return representation
 
 class TaskUserSerializer(serializers.ModelSerializer):
+    position_name = serializers.CharField(source='position.name', read_only=True, default=None)
 
     class Meta:
         model = User
-        fields = ['id', 'first_name', 'last_name', 'position', 'role']
+        fields = ['id', 'first_name', 'last_name', 'position_name', 'role']

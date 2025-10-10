@@ -37,22 +37,24 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
         return None
 
     def get_evaluator(self, obj):
+        position_name = obj.evaluator.position.name if obj.evaluator.position else None
         if obj.evaluator:
             return {
                 'id': obj.evaluator.id,
                 'username': obj.evaluator.username,
                 'full_name': obj.evaluator.get_full_name(),
-                'position': obj.evaluator.position,
+                'position_name': position_name,
             }
         return None
 
     def get_evaluatee(self, obj):
+        position_name = obj.evaluator.position.name if obj.evaluator.position else None
         if obj.evaluatee:
             return {
                 'id': obj.evaluatee.id,
                 'username': obj.evaluatee.username,
                 'full_name': obj.evaluatee.get_full_name(),
-                'position': obj.evaluatee.position,
+                'position_name': position_name,
             }
         return None
 

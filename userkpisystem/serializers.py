@@ -63,11 +63,12 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         data['evaluatee'] = evaluatee
         return data
     def get_user_details(self, user_obj):
+        position_name = user_obj.position.name if user_obj.position else None
         if user_obj:
             return {
                 'id': user_obj.id,
                 'full_name': user_obj.get_full_name(),
-                'position': user_obj.position,
+                'position_name': position_name,
             }
         return None
     
@@ -112,13 +113,14 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
     role_display = serializers.CharField(source='get_role_display', read_only=True)
     selected_month_evaluation = serializers.SerializerMethodField()
     can_evaluate = serializers.SerializerMethodField()
+    position_name = serializers.CharField(source='position.name', read_only=True, default=None)
 
     class Meta:
         model = User
         fields = [
             'id', 'first_name', 'last_name', 'profile_photo',
             'department_name', 'role_display', 'selected_month_evaluation',
-            'can_evaluate', 'position',
+            'can_evaluate', 'position_name',
         ]
 
     def get_selected_month_evaluation(self, obj):

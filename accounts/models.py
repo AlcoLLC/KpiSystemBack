@@ -36,6 +36,21 @@ class Department(models.Model):
     def __str__(self):
         return self.name
 
+class Position(models.Model):
+    name = models.CharField(
+        max_length=255, 
+        unique=True, 
+        verbose_name="Vəzifənin adı"
+    )
+
+    class Meta:
+        verbose_name = "Vəzifə"
+        verbose_name_plural = "Vəzifələr"
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
 class User(AbstractUser):
     ROLE_CHOICES = [
         ("admin", "Admin"),
@@ -53,7 +68,15 @@ class User(AbstractUser):
         validators=[validate_file_type] 
     )
     phone_number = models.CharField(max_length=20, blank=True)
-    position = models.CharField(max_length=255, blank=True, null=True)
+
+    position = models.ForeignKey(
+            Position, 
+            on_delete=models.SET_NULL,
+            null=True, 
+            blank=True,
+            related_name='users',
+            verbose_name="Vəzifə"
+    )
 
     department = models.ForeignKey(
         Department, 
