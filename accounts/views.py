@@ -16,7 +16,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().select_related('department', 'position').order_by('first_name', 'last_name')
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated]
 
     filter_backends = [DjangoFilterBackend]
     filterset_class = UserFilter
@@ -38,7 +38,7 @@ class UserViewSet(viewsets.ModelViewSet):
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Position.objects.all().order_by('name')
     serializer_class = DepartmentSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated]
 
     search_fields = ['name']
 
