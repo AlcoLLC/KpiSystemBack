@@ -42,6 +42,7 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
                 'id': obj.evaluator.id,
                 'username': obj.evaluator.username,
                 'full_name': obj.evaluator.get_full_name(),
+                'position': obj.evaluator.position,
             }
         return None
 
@@ -51,6 +52,7 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
                 'id': obj.evaluatee.id,
                 'username': obj.evaluatee.username,
                 'full_name': obj.evaluatee.get_full_name(),
+                'position': obj.evaluatee.position,
             }
         return None
 

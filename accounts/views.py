@@ -67,7 +67,7 @@ class FilterableDepartmentListView(APIView):
 
     def get(self, request, *args, **kwargs):
         user = request.user
-        queryset = Department.objects.none()  # Default olaraq boş
+        queryset = Department.objects.none() 
 
         if user.role == 'admin':
             queryset = Department.objects.all().order_by('name')

@@ -1,11 +1,7 @@
-# users/admin.py
-
 from django.contrib import admin
 from .models import User, Department
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-# DƏYİŞİKLİK 1: LedDepartmentsInline artıq lazımsızdır, silinir.
-# class LedDepartmentsInline(admin.TabularInline): ...
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
@@ -19,9 +15,9 @@ class UserAdmin(BaseUserAdmin):
         fieldsets = super().get_fieldsets(request, obj)
         
         if obj and obj.role in ['top_management', 'admin']:
-            additional_fields = ('role', 'profile_photo', 'phone_number')
+            additional_fields = ('role', 'profile_photo', 'phone_number', 'position')
         else:
-            additional_fields = ('role', 'department', 'profile_photo', 'phone_number')
+            additional_fields = ('role', 'department', 'profile_photo', 'phone_number', 'position')
             
         return fieldsets + (('Əlavə Məlumatlar', {'fields': additional_fields}),)
 

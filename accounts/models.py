@@ -53,6 +53,7 @@ class User(AbstractUser):
         validators=[validate_file_type] 
     )
     phone_number = models.CharField(max_length=20, blank=True)
+    position = models.CharField(max_length=255, blank=True, null=True)
 
     department = models.ForeignKey(
         Department, 
