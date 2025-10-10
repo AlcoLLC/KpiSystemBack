@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, status, generics
+from rest_framework import viewsets, permissions, status, generics, filters
 from .models import User, Department, Position
 from .serializers import UserSerializer, DepartmentSerializer, MyTokenObtainPairSerializer, PositionSerializer
 from .permissions import IsOwnerOrAdminOrReadOnly
@@ -35,7 +35,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
-    queryset = Position.objects.all().order_by('name')
+    queryset = Department.objects.all().order_by('name')
     serializer_class = DepartmentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -90,10 +90,11 @@ class PositionViewSet(viewsets.ModelViewSet):
     """
     Vəzifələri idarə etmək üçün ViewSet (CRUD).
     """
-    queryset = Position.objects.all()
+    queryset = Position.objects.all().order_by('name')
     serializer_class = PositionSerializer
     permission_classes = [IsAuthenticated]  
 
+    filter_backends = [filters.SearchFilter]
     search_fields = ['name']
 
  
