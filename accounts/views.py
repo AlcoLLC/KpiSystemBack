@@ -1,6 +1,6 @@
 from rest_framework import viewsets, permissions, status, generics
-from .models import User, Department
-from .serializers import UserSerializer, DepartmentSerializer, MyTokenObtainPairSerializer
+from .models import User, Department, Position
+from .serializers import UserSerializer, DepartmentSerializer, MyTokenObtainPairSerializer, PositionSerializer
 from .permissions import IsOwnerOrAdminOrReadOnly
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.views import APIView
@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import action
+from .permissions import IsAdminUser  
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -67,7 +68,7 @@ class FilterableDepartmentListView(APIView):
 
     def get(self, request, *args, **kwargs):
         user = request.user
-        queryset = Department.objects.none() 
+        queryset = Department.objects.none()  
 
         if user.role == 'admin':
             queryset = Department.objects.all().order_by('name')
@@ -77,3 +78,30 @@ class FilterableDepartmentListView(APIView):
 
         serializer = DepartmentSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+
+class PositionViewSet(viewsets.ModelViewSet):
+    """
+    Vəzifələri idarə etmək üçün ViewSet (CRUD).
+    """
+    queryset = Position.objects.all()
+    serializer_class = PositionSerializer
+    permission_classes = [IsAdminUser]  
+
+ 
+class AvailableDepartmentsForRoleView(APIView):
+    """
+    User formasında rol seçiminə görə uyğun departamentləri qaytarır.
+    Məsələn, 'department_lead' üçün yalnız rəhbəri olmayan departamentlər.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        role = request.query_params.get('role')
+        queryset = Department.objects.all()
+
+        if role == 'department_lead':
+            queryset = Department.objects.filter(department_lead__isnull=True)
+        
+        serializer = DepartmentSerializer(queryset, many=True)
+        return Response(serializer.data)
