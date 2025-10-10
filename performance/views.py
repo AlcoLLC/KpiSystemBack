@@ -11,8 +11,9 @@ from .serializers import SubordinateSerializer
 from django.db.models import Avg
 from datetime import datetime
 from kpis.models import KPIEvaluation
-from accounts.models import User, Department
-from accounts.serializers import DepartmentSerializer
+from accounts.models import User
+from django.db.models import Avg
+from datetime import timedelta
 
 
 class SubordinateListView(APIView):
@@ -37,9 +38,7 @@ class SubordinateListView(APIView):
         serializer = SubordinateSerializer(subordinates, many=True, context={'request': request})
         return Response(serializer.data)
 
-# performance/views.py
 
-# ... importlar ...
 
 class PerformanceSummaryView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -52,38 +51,37 @@ class PerformanceSummaryView(APIView):
                 target_user = User.objects.get(slug=slug)
             except User.DoesNotExist:
                 return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-        
+
+        # ... icazə yoxlaması ...
 
         all_tasks = Task.objects.filter(assignee=target_user)
         done_tasks = all_tasks.filter(status='DONE')
         today = timezone.now().date()
-        
-        
-        tasks_with_due_date = done_tasks.filter(due_date__isnull=False)
-        on_time_completed_count = tasks_with_due_date.filter(completed_at__date__lte=F('due_date')).count()
-        
-        total_relevant_completed = tasks_with_due_date.count()
 
-        current_overdue_count = all_tasks.filter(
-            due_date__lt=today,
+        completed_count = done_tasks.count()
+        overdue_count = all_tasks.filter(
+            due_date__lt=today, 
             status__in=['PENDING', 'TODO', 'IN_PROGRESS']
         ).count()
         
-        total_performance_base = total_relevant_completed + current_overdue_count
-
-        if total_performance_base > 0:
-            on_time_rate = (on_time_completed_count / total_performance_base) * 100
-        else:
-            on_time_rate = 0 
+        three_months_ago = timezone.now() - timedelta(days=90)
         
+        average_kpi_score_aggregation = KPIEvaluation.objects.filter(
+            evaluatee=target_user,
+            evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION,
+            created_at__gte=three_months_ago
+        ).aggregate(average_score=Avg('final_score'))
+        
+        average_kpi_score = average_kpi_score_aggregation.get('average_score') or 0
+
         summary_data = {
             "user": SubordinateSerializer(target_user, context={'request': request}).data,
             "task_performance": {
                 "total_tasks": all_tasks.count(),
-                "completed_count": done_tasks.count(),
+                "completed_count": completed_count,
                 "active_count": all_tasks.filter(status__in=['TODO', 'IN_PROGRESS']).count(),
-                "overdue_count": current_overdue_count, 
-                "on_time_rate": round(on_time_rate, 1),
+                "overdue_count": overdue_count,
+                "average_kpi_score": round(average_kpi_score, 1),
                 "priority_completion": list(done_tasks.values('priority').annotate(count=Count('id')).order_by('priority')),
             },
         }
