@@ -7,7 +7,7 @@ from .views import UserViewSet, DepartmentViewSet, MyTokenObtainPairView, Logout
 router = DefaultRouter()
 router.register(r"users", UserViewSet)
 router.register(r"departments", DepartmentViewSet)
-router.register(r"positions", PositionViewSet, basename='position')
+router.register(r"positions", PositionViewSet, basename='account-position')
 
 urlpatterns = [
     path('login/', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
