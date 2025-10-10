@@ -1,5 +1,3 @@
-# tasks/views.py (Tam və yenilənmiş versiya)
-
 from django.db.models import Q, Count
 from django.db.models.functions import TruncMonth
 from django.core.signing import Signer, BadSignature
@@ -12,8 +10,8 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.views import APIView
 from accounts.models import User
-from .models import Task
-from .serializers import TaskSerializer, TaskUserSerializer
+from .models import Task, CalendarNote
+from .serializers import TaskSerializer, TaskUserSerializer, CalendarNoteSerializer
 from .utils import send_task_notification_email
 from .filters import TaskFilter
 from .pagination import CustomPageNumberPagination
@@ -175,4 +173,28 @@ class TaskVerificationView(views.APIView):
             return Response({"detail": "Tapşırıq tapılmadı."}, status=status.HTTP_404_NOT_FOUND)
         
 
+class CalendarNoteViewSet(viewsets.ModelViewSet):
+    serializer_class = CalendarNoteSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
         
+        queryset = CalendarNote.objects.filter(user=self.request.user)
+        
+        if start_date and end_date:
+            queryset = queryset.filter(date__range=[start_date, end_date])
+            
+        return queryset
+
+    def perform_create(self, serializer):
+        date = serializer.validated_data.get('date')
+        instance = CalendarNote.objects.filter(user=self.request.user, date=date).first()
+        if instance:
+            self.perform_update(serializer)
+        else:
+            serializer.save(user=self.request.user)
+            
+    def perform_update(self, serializer):
+        serializer.save(user=self.request.user)

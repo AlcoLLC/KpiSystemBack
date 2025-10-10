@@ -1,10 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import TaskViewSet, TaskVerificationView, AssignableUserListView, MonthlyTaskStatsView, PriorityTaskStatsView, HomeStatsView
+from .views import TaskViewSet, TaskVerificationView, AssignableUserListView, MonthlyTaskStatsView, PriorityTaskStatsView, HomeStatsView, CalendarNoteViewSet
 
 router = DefaultRouter()
 
 router.register(r'tasks', TaskViewSet, basename='task')
+router.register(r'notes', CalendarNoteViewSet, basename='calendarnote')
+
 
 urlpatterns = [
     path('', include(router.urls)),

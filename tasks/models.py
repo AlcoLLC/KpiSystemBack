@@ -46,3 +46,24 @@ class Task(models.Model):
 
     def __str__(self):
         return f"{self.title} -> {self.assignee.username}"
+    
+class CalendarNote(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name="calendar_notes",
+        verbose_name=_("İstifadəçi")
+    )
+    date = models.DateField(verbose_name=_("Tarix"))
+    content = models.TextField(verbose_name=_("Məzmun"))
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Təqvim Qeydi")
+        verbose_name_plural = _("Təqvim Qeydləri")
+        unique_together = ('user', 'date') 
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.user.username} - {self.date.strftime('%Y-%m-%d')}"
