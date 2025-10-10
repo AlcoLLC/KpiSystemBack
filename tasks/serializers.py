@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Task
+from .models import Task, CalendarNote
 from accounts.models import User
 from kpis.serializers import KPIEvaluationSerializer
 from accounts.serializers import UserSerializer
@@ -76,3 +76,9 @@ class TaskUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'first_name', 'last_name', 'position_name', 'role']
+
+class CalendarNoteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CalendarNote
+        fields = ['id', 'date', 'content']
+        read_only_fields = ['user']
