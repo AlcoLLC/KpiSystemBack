@@ -8,7 +8,6 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import action
-from .permissions import IsAdminUser  
 from .filters import UserFilter
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -93,7 +92,9 @@ class PositionViewSet(viewsets.ModelViewSet):
     """
     queryset = Position.objects.all()
     serializer_class = PositionSerializer
-    permission_classes = [IsAdminUser]  
+    permission_classes = [IsAuthenticated]  
+
+    search_fields = ['name']
 
  
 class AvailableDepartmentsForRoleView(APIView):
