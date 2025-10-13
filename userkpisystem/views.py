@@ -62,47 +62,32 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         except (ValueError, TypeError):
             evaluation_date = timezone.now().date().replace(day=1)
         
-        users_to_show = []
-
         if evaluator.role == 'admin':
-            users_to_show = User.objects.filter(
+            base_users_qs = User.objects.filter(
                 is_active=True
             ).exclude(
                 Q(id=evaluator.id) | Q(role__in=['admin', 'top_management'])
-            ).select_related('department')
-
-            if department_id:
-                try:
-                    department_id_int = int(department_id)
-                    users_to_show = users_to_show.filter(department_id=department_id_int)
-                except (ValueError, TypeError):
-                    pass
+            ).select_related('department', 'position')
         else:
-            all_subordinates = evaluator.get_kpi_subordinates().select_related('department')
-            
-            evaluated_this_month_ids = set(
-                UserEvaluation.objects.filter(
-                    evaluation_date=evaluation_date
-                ).values_list('evaluatee_id', flat=True)
-            )
+            base_users_qs = evaluator.get_kpi_subordinates().select_related('department', 'position')
 
-            for subordinate in all_subordinates:
-                if subordinate.get_kpi_evaluator() == evaluator:
-                    users_to_show.append(subordinate)
-                    continue 
-                if subordinate.id in evaluated_this_month_ids:
-                    users_to_show.append(subordinate)
-
-        if evaluation_status in ['evaluated', 'unevaluated']:
+        if evaluator.role == 'admin' and department_id:
+            try:
+                base_users_qs = base_users_qs.filter(department_id=int(department_id))
+            except (ValueError, TypeError):
+                pass
+        
+        if evaluation_status in ['evaluated', 'pending']:
             evaluated_this_month_ids = UserEvaluation.objects.filter(
                 evaluation_date=evaluation_date
             ).values_list('evaluatee_id', flat=True)
 
             if evaluation_status == 'evaluated':
-                users_to_show = users_to_show.filter(id__in=evaluated_this_month_ids)
-            elif evaluation_status == 'unevaluated':
-                users_to_show = users_to_show.exclude(id__in=evaluated_this_month_ids)
+                base_users_qs = base_users_qs.filter(id__in=evaluated_this_month_ids)
+            elif evaluation_status == 'pending':
+                base_users_qs = base_users_qs.exclude(id__in=evaluated_this_month_ids)
         
+        users_to_show = base_users_qs.order_by('last_name', 'first_name')
 
         context = {'request': request, 'evaluation_date': evaluation_date}
         serializer = UserForEvaluationSerializer(users_to_show, many=True, context=context)
