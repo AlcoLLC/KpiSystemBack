@@ -10,26 +10,36 @@ class PositionSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=True)
-    role_display = serializers.CharField(source='get_role_display', read_only=True)
-    
+    role_display = serializers.CharField(source='get_role_display', read_only=True)    
     all_departments = serializers.SerializerMethodField()
-
     position_details = PositionSerializer(source='position', read_only=True)
     position = serializers.PrimaryKeyRelatedField(
         queryset=Position.objects.all(), write_only=True, required=False, allow_null=True
     )
 
     password = serializers.CharField(write_only=True, required=False)
-    profile_photo = serializers.FileField(required=False, allow_null=True)
+    profile_photo = serializers.FileField(required=False, allow_null=True, use_url=True)
 
     class Meta:
         model = User
         fields = [
-            "id", "email", "role", "role_display", 
-            "all_departments",  'position', 'position_details',
-            "first_name", "last_name", "profile_photo", "phone_number", "password"
+            "id", "email", "role", "role_display", "all_departments", 
+            'position', 'position_details', "department", "first_name", "last_name", 
+            "profile_photo", "phone_number", "password"
         ]
         read_only_fields = ['role_display', 'all_departments', 'position_details']
+
+    def get_profile_photo(self, obj):
+        request = self.context.get('request')
+        if obj.profile_photo and hasattr(obj.profile_photo, 'url'):
+            if request is not None:
+                 return [{
+                    'uid': '-1',
+                    'name': obj.profile_photo.name,
+                    'status': 'done',
+                    'url': request.build_absolute_uri(obj.profile_photo.url),
+                }]
+        return []
 
     def get_all_departments(self, obj):
         departments = set()
