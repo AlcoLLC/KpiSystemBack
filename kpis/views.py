@@ -5,14 +5,12 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.db.models import Q, Exists, OuterRef
 from .models import KPIEvaluation
 from .serializers import KPIEvaluationSerializer
-from .utils import send_kpi_evaluation_request_email 
+from .utils import send_kpi_evaluation_request_email # Bu funksiyanın mövcud olduğunu güman edirik
 from accounts.models import User
 from tasks.models import Task
 from tasks.serializers import TaskSerializer
 from datetime import datetime
-import logging
 
-logger = logging.getLogger(__name__)
 
 class KPIEvaluationViewSet(viewsets.ModelViewSet):
     queryset = KPIEvaluation.objects.all()
@@ -63,9 +61,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
         if evaluator == evaluatee:
             if KPIEvaluation.objects.filter(
-                task=task, 
-                evaluatee=evaluatee, 
-                evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+                task=task, evaluatee=evaluatee, evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
             ).exists():
                 raise ValidationError("Bu tapşırıq üçün artıq bir öz dəyərləndirmə etmisiniz.")
 
@@ -73,42 +69,27 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                 evaluator=evaluator, 
                 evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
             )
+
+        else:
+            direct_superior = evaluatee.get_direct_superior()
             
-            try:
-                logger.info(f"Rəhbərə KPI dəyərləndirmə sorğusu göndərilir: {instance.evaluatee.get_full_name()}")
-                send_kpi_evaluation_request_email(instance)
-            except Exception as e:
-                logger.error(
-                    f"KPI dəyərləndirmə e-poçtu göndərilərkən xəta baş verdi (Evaluatee ID: {instance.evaluatee.id}): {e}", 
-                    exc_info=True
-                )
+            if not (direct_superior and direct_superior == evaluator) and not evaluator.role == 'admin':
+                raise PermissionDenied("Bu istifadəçini dəyərləndirməyə icazəniz yoxdur. Yalnız birbaşa rəhbər dəyərləndirmə edə bilər.")
 
-            else:
-                direct_superior = evaluatee.get_direct_superior()
-                
-                if not (direct_superior and direct_superior == evaluator) and not evaluator.role == 'admin':
-                    raise PermissionDenied("Bu istifadəçini dəyərləndirməyə icazəniz yoxdur. Yalnız birbaşa rəhbər dəyərləndirmə edə bilər.")
+            if not KPIEvaluation.objects.filter(
+                task=task, evaluatee=evaluatee, evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
+            ).exists() and evaluator.role != 'admin':
+                raise ValidationError("Üst dəyərləndirmə etməzdən əvvəl işçinin öz dəyərləndirməsini tamamlaması lazımdır.")
 
-                if not KPIEvaluation.objects.filter(
-                    task=task, 
-                    evaluatee=evaluatee, 
-                    evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
-                ).exists() and evaluator.role != 'admin':
-                    raise ValidationError("Üst dəyərləndirmə etməzdən əvvəl işçinin öz dəyərləndirməsini tamamlaması lazımdır.")
+            if KPIEvaluation.objects.filter(
+                task=task, evaluator=evaluator, evaluatee=evaluatee, evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+            ).exists():
+                raise ValidationError("Bu tapşırığı bu işçi üçün artıq dəyərləndirmisiniz.")
 
-                if KPIEvaluation.objects.filter(
-                    task=task, 
-                    evaluator=evaluator, 
-                    evaluatee=evaluatee, 
-                    evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
-                ).exists():
-                    raise ValidationError("Bu tapşırığı bu işçi üçün artıq dəyərləndirmisiniz.")
-
-                serializer.save(
-                    evaluator=evaluator,
-                    evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
-                )
-
+            serializer.save(
+                evaluator=evaluator,
+                evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+            )
 
     @action(detail=False, methods=['get'])
     def my_evaluations(self, request):
