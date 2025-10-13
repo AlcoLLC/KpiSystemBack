@@ -13,21 +13,30 @@ class UserSerializer(serializers.ModelSerializer):
     role_display = serializers.CharField(source='get_role_display', read_only=True)    
     all_departments = serializers.SerializerMethodField()
     position_details = PositionSerializer(source='position', read_only=True)
+
+    profile_photo = serializers.FileField(required=False, allow_null=True, use_url=True)
+    password = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
+
     position = serializers.PrimaryKeyRelatedField(
         queryset=Position.objects.all(), write_only=True, required=False, allow_null=True
     )
+    department = serializers.PrimaryKeyRelatedField(
+        queryset=Department.objects.all(), write_only=True, required=False, allow_null=True
+    )
+    top_managed_departments = serializers.PrimaryKeyRelatedField(
+        queryset=Department.objects.all(), many=True, write_only=True, required=False
+    )
 
-    password = serializers.CharField(write_only=True, required=False)
-    profile_photo = serializers.FileField(required=False, allow_null=True, use_url=True)
 
     class Meta:
         model = User
         fields = [
             "id", "email", "role", "role_display", "all_departments", 
             'position', 'position_details', "department", "first_name", "last_name", 
-            "profile_photo", "phone_number", "password"
+            "profile_photo", "phone_number", "password", "top_managed_departments"
         ]
         read_only_fields = ['role_display', 'all_departments', 'position_details']
+
 
     def get_profile_photo(self, obj):
         request = self.context.get('request')
@@ -43,22 +52,11 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_all_departments(self, obj):
         departments = set()
-
-        if obj.department:
-            departments.add(obj.department.name)
-
-        if hasattr(obj, 'managed_department') and obj.managed_department:
-            departments.add(obj.managed_department.name)
-
-       
-        if hasattr(obj, 'led_department') and obj.led_department:
-            departments.add(obj.led_department.name)
-
-        
+        if obj.department: departments.add(obj.department.name)
+        if hasattr(obj, 'managed_department') and obj.managed_department: departments.add(obj.managed_department.name)
+        if hasattr(obj, 'led_department') and obj.led_department: departments.add(obj.led_department.name)
         if hasattr(obj, 'top_managed_departments'):
-            for dept in obj.top_managed_departments.all():
-                departments.add(dept.name)
-
+            for dept in obj.top_managed_departments.all(): departments.add(dept.name)
         return list(departments)
 
 
@@ -76,13 +74,15 @@ class UserSerializer(serializers.ModelSerializer):
         return value
 
     def update(self, instance, validated_data):
-        # ModelSerializer'ın varsayılan update metodu çoğu alanı halleder.
-        # Sadece özel işlem gerektiren 'password' alanını yönetmemiz yeterli.
-        password = validated_data.pop('password', None)
+         
+        top_departments = validated_data.pop('top_managed_departments', None)
         
-        # Üst sınıfın update'ini çağırarak diğer alanların güncellenmesini sağlayın
         instance = super().update(instance, validated_data)
 
+        if top_departments is not None:
+            instance.top_managed_departments.set(top_departments)
+            
+        password = validated_data.get('password')
         if password:
             instance.set_password(password)
         
