@@ -55,6 +55,7 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         evaluator = request.user
         date_str = request.query_params.get('date')
         department_id = request.query_params.get('department')
+        evaluation_status = request.query_params.get('evaluation_status') 
 
         try:
             evaluation_date = datetime.strptime(date_str, '%Y-%m').date().replace(day=1) if date_str else timezone.now().date().replace(day=1)
@@ -91,6 +92,17 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
                     continue 
                 if subordinate.id in evaluated_this_month_ids:
                     users_to_show.append(subordinate)
+
+        if evaluation_status in ['evaluated', 'unevaluated']:
+            evaluated_this_month_ids = UserEvaluation.objects.filter(
+                evaluation_date=evaluation_date
+            ).values_list('evaluatee_id', flat=True)
+
+            if evaluation_status == 'evaluated':
+                users_to_show = users_to_show.filter(id__in=evaluated_this_month_ids)
+            elif evaluation_status == 'unevaluated':
+                users_to_show = users_to_show.exclude(id__in=evaluated_this_month_ids)
+        
 
         context = {'request': request, 'evaluation_date': evaluation_date}
         serializer = UserForEvaluationSerializer(users_to_show, many=True, context=context)
