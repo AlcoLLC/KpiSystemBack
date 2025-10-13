@@ -10,24 +10,22 @@ class PositionSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=True)
-    role_display = serializers.CharField(source='get_role_display', read_only=True)
-    
+    role_display = serializers.CharField(source='get_role_display', read_only=True)    
     all_departments = serializers.SerializerMethodField()
-
     position_details = PositionSerializer(source='position', read_only=True)
     position = serializers.PrimaryKeyRelatedField(
         queryset=Position.objects.all(), write_only=True, required=False, allow_null=True
     )
 
     password = serializers.CharField(write_only=True, required=False)
-    profile_photo = serializers.SerializerMethodField()
+    profile_photo = serializers.FileField(required=False, allow_null=True, use_url=True)
 
     class Meta:
         model = User
         fields = [
-            "id", "email", "role", "role_display", 
-            "all_departments", 'position', 'position_details', "department",
-            "first_name", "last_name", "profile_photo", "phone_number", "password"
+            "id", "email", "role", "role_display", "all_departments", 
+            'position', 'position_details', "department", "first_name", "last_name", 
+            "profile_photo", "phone_number", "password"
         ]
         read_only_fields = ['role_display', 'all_departments', 'position_details']
 
@@ -45,21 +43,12 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_all_departments(self, obj):
         departments = set()
-
-        if obj.department:
-            departments.add(obj.department.name)
-
-        if hasattr(obj, 'managed_department') and obj.managed_department:
-            departments.add(obj.managed_department.name)
-
-       
-        if hasattr(obj, 'led_department') and obj.led_department:
-            departments.add(obj.led_department.name)
-
-        
+        if obj.department: departments.add(obj.department.name)
+        if hasattr(obj, 'managed_department') and obj.managed_department: departments.add(obj.managed_department.name)
+        if hasattr(obj, 'led_department') and obj.led_department: departments.add(obj.led_department.name)
         if hasattr(obj, 'top_managed_departments'):
-            for dept in obj.top_managed_departments.all():
-                departments.add(dept.name)
+            for dept in obj.top_managed_departments.all(): departments.add(dept.name)
+        return list(departments)
 
         return list(departments)
 
