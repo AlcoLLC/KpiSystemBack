@@ -39,6 +39,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     serializer_class = DepartmentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    filter_backends = [filters.SearchFilter]
     search_fields = ['name']
 
 
@@ -92,7 +93,7 @@ class PositionViewSet(viewsets.ModelViewSet):
     """
     queryset = Position.objects.all().order_by('name')
     serializer_class = PositionSerializer
-    permission_classes = [IsAuthenticated]  
+    permission_classes = [permissions.IsAuthenticated]  
 
     filter_backends = [filters.SearchFilter]
     search_fields = ['name']
