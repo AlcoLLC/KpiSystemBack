@@ -19,10 +19,11 @@ class UserSerializer(serializers.ModelSerializer):
         queryset=Position.objects.all(), write_only=True, required=False, allow_null=True
     )
     department = serializers.PrimaryKeyRelatedField(
-        queryset=Department.objects.all(), write_only=True, required=False, allow_null=True
+        queryset=Department.objects.all(), required=False, allow_null=True
     )
+
     top_managed_departments = serializers.PrimaryKeyRelatedField(
-        queryset=Department.objects.all(), many=True, write_only=True, required=False
+        queryset=Department.objects.all(), many=True, required=False
     )
 
     class Meta:
@@ -33,7 +34,7 @@ class UserSerializer(serializers.ModelSerializer):
             "profile_photo", "phone_number", "password", "top_managed_departments"
         ]
         read_only_fields = ['role_display', 'all_departments', 'position_details']
-        
+       
     def get_all_departments(self, obj):
         departments = set()
         if obj.department: departments.add(obj.department.name)
