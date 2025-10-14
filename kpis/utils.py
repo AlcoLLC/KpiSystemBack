@@ -29,7 +29,7 @@ def send_kpi_evaluation_request_email(kpi_evaluation):
         'evaluatee_name': evaluatee.get_full_name() or evaluatee.username,
         'superior_name': superior.get_full_name() or superior.username,
         'evaluation_url': evaluation_url,
-        'self_score': kpi_evaluation.self_score, # Buranı dəyişdik
+        'self_score': kpi_evaluation.self_score,
         'self_comment': kpi_evaluation.comment 
     }
 

@@ -22,7 +22,6 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get', 'put', 'patch'], url_path='me')
     def me(self, request, *args, **kwargs):
-        """Get or update current user profile"""
         if request.method == 'GET':
             serializer = self.get_serializer(request.user)
             return Response(serializer.data)
@@ -88,9 +87,6 @@ class FilterableDepartmentListView(APIView):
     
 
 class PositionViewSet(viewsets.ModelViewSet):
-    """
-    Vəzifələri idarə etmək üçün ViewSet (CRUD).
-    """
     queryset = Position.objects.all().order_by('name')
     serializer_class = PositionSerializer
     permission_classes = [permissions.IsAuthenticated]  

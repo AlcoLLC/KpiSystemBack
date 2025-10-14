@@ -17,12 +17,7 @@ from .filters import TaskFilter
 from .pagination import CustomPageNumberPagination
 
 
-# === YENİ YARDIMÇI FUNKSİYA (TƏKRARLANMANIN QARŞISINI ALMAQ ÜÇÜN) ===
 def get_visible_tasks(user):
-    """
-    İstifadəçinin roluna görə görə biləcəyi bütün tapşırıqları qaytarır.
-    Bu, bütün view-lar üçün tək mənbədir.
-    """
     if  user.role == "admin":
         return Task.objects.all()
 
@@ -41,25 +36,21 @@ class TaskViewSet(viewsets.ModelViewSet):
     pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
-        """Artıq bütün məntiq mərkəzləşdirilmiş yardımçı funksiyadan gəlir."""
         return get_visible_tasks(self.request.user).order_by('-created_at')
 
     def perform_create(self, serializer):
         creator = self.request.user
         assignee = serializer.validated_data["assignee"]
 
-        # 1. İstifadəçi özünə tapşırıq verirsə (təsdiqə gedir)
         if creator == assignee:
             superior = creator.get_superior()
             if superior:
                 task = serializer.save(created_by=creator, approved=False, status="PENDING")
                 send_task_notification_email(task, notification_type="approval_request")
             else:
-                # Rəhbəri yoxdursa, tapşırıq avtomatik təsdiqlənir
                 task = serializer.save(created_by=creator, approved=True, status="TODO")
             return
 
-        # 2. İstifadəçi başqasına tapşırıq verirsə (icazə yoxlaması)
         subordinates = creator.get_subordinates()
         if not creator.is_staff and creator.role != 'admin' and assignee not in subordinates:
             raise PermissionDenied("Siz yalnız tabeliyinizdə olan işçilərə tapşırıq təyin edə bilərsiniz.")
@@ -69,12 +60,10 @@ class TaskViewSet(viewsets.ModelViewSet):
 
 
 class AssignableUserListView(generics.ListAPIView):
-    """Tapşırıq təyin edilə bilən istifadəçilərin siyahısını qaytarır."""
     serializer_class = TaskUserSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
-        """Məntiq tamamilə get_subordinates metodundan gəlir. Sadə və dəqiq."""
         return self.request.user.get_subordinates()
 
 
@@ -82,12 +71,10 @@ class HomeStatsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        # Statistikalar üçün də mərkəzi funksiyadan istifadə edirik
         base_queryset = get_visible_tasks(request.user)
 
         today = timezone.now().date()
         
-        # Rəhbərlər üçün statistika yalnız onların tabeçiliyində olanları əhatə edir
         stats_queryset = base_queryset.exclude(assignee=request.user) if request.user.role != 'employee' else base_queryset
 
         data = {
@@ -138,7 +125,6 @@ class PriorityTaskStatsView(APIView):
 
 
 class TaskVerificationView(views.APIView):
-    # Bu view olduğu kimi qala bilər, çünki onun məntiqi fərqlidir.
     permission_classes = [permissions.AllowAny] 
 
     def get(self, request, token, *args, **kwargs):

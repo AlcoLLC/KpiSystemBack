@@ -121,7 +121,6 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         password = attrs.get("password")
 
         try:
-            # Get the first active user with this email (or add additional filters)
             user = User.objects.filter(email=email, is_active=True).first()
             if not user:
                 raise serializers.ValidationError("Bu email ilə aktiv istifadəçi tapılmadı.")

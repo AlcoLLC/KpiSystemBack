@@ -17,7 +17,6 @@ from datetime import timedelta
 
 
 class SubordinateListView(APIView):
-    """Giriş edən rəhbərin tabeliyində olan işçilərin siyahısını qaytarır."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
@@ -51,8 +50,6 @@ class PerformanceSummaryView(APIView):
                 target_user = User.objects.get(slug=slug)
             except User.DoesNotExist:
                 return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        # ... icazə yoxlaması ...
 
         all_tasks = Task.objects.filter(assignee=target_user)
         done_tasks = all_tasks.filter(status='DONE')
@@ -106,13 +103,11 @@ class KpiMonthlySummaryView(APIView):
             evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
         )
 
-        # Frontend-dən gələn parametrlərə görə filterləmə
         if start_date_str:
             evaluations_query = evaluations_query.filter(
                 task__completed_at__date__range=[start_date_str, end_date_str]
             )
         else:
-            # Köhnə məntiqlə uyğunluq üçün
             try:
                 year = int(request.query_params.get('year', datetime.now().year))
                 month = int(request.query_params.get('month', datetime.now().month))
@@ -130,7 +125,6 @@ class KpiMonthlySummaryView(APIView):
                 "day": evaluation.task.completed_at.day,
                 "score": evaluation.final_score,
                 "task_title": evaluation.task.title,
-                # Qrafikdə istifadə etmək üçün tamamlanma tarixini əlavə edirik
                 "completed_at": evaluation.task.completed_at.isoformat() 
             }
             for evaluation in evaluations if evaluation.task.completed_at
@@ -143,9 +137,6 @@ class KpiMonthlySummaryView(APIView):
     
 
 class UserKpiScoreView(APIView):
-    """
-    Bir istifadəçinin son 90 gündəki ortalama yekun KPI balını qaytarır.
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, slug, *args, **kwargs):
@@ -154,13 +145,11 @@ class UserKpiScoreView(APIView):
         except User.DoesNotExist:
             return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # İcazə yoxlaması (yalnız admin, istifadəçinin özü və ya rəhbərləri baxa bilər)
         if not (request.user == target_user or request.user.role == 'admin' or request.user in target_user.get_all_superiors()):
              return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
         three_months_ago = timezone.now() - timedelta(days=90)
 
-        # Son 90 gündəki tamamlanmış və rəhbər tərəfindən qiymətləndirilmiş tapşırıqları tapırıq
         aggregation = KPIEvaluation.objects.filter(
             evaluatee=target_user,
             evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION,

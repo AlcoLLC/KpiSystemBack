@@ -56,9 +56,6 @@ class UserEvaluationAdmin(admin.ModelAdmin):
 
     @admin.display(description='Departament', ordering='evaluatee__department')
     def get_evaluatee_department(self, obj):
-        """
-        Qiymətləndirilən işçinin departament adını qaytarır.
-        """
         if obj.evaluatee and obj.evaluatee.department:
             return obj.evaluatee.department.name
         return "Təyin edilməyib"
