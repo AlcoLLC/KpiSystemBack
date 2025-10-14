@@ -14,6 +14,9 @@ from .serializers import (
 )
 from accounts.models import User
 
+from reports.utils import create_log_entry
+from reports.models import ActivityLog
+
 
 class UserEvaluationViewSet(viewsets.ModelViewSet):
     queryset = UserEvaluation.objects.select_related('evaluator', 'evaluatee', 'updated_by').all()
@@ -35,7 +38,18 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(q_objects).distinct().order_by('-evaluation_date')
 
     def perform_create(self, serializer):
-        serializer.save(evaluator=self.request.user)
+        evaluation = serializer.save(evaluator=self.request.user)
+        
+        create_log_entry(
+            actor=evaluation.evaluator,
+            action_type=ActivityLog.ActionTypes.KPI_USER_EVALUATED,
+            target_user=evaluation.evaluatee,
+            details={
+                'score': evaluation.score,
+                'month': evaluation.evaluation_date.strftime('%Y-%m')
+            }
+        )
+
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()

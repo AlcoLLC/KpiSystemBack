@@ -12,6 +12,9 @@ from tasks.serializers import TaskSerializer
 from datetime import datetime
 import logging
 
+from reports.utils import create_log_entry
+from reports.models import ActivityLog
+
 logger = logging.getLogger(__name__)
 
 class KPIEvaluationViewSet(viewsets.ModelViewSet):
@@ -25,9 +28,8 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             return self.queryset.select_related('task', 'evaluator', 'evaluatee')
 
         subordinate_ids = user.get_subordinates().values_list('id', flat=True)
-
         q_objects = Q(evaluatee=user) | Q(evaluator=user) | Q(evaluatee_id__in=subordinate_ids)
-        
+
         return self.queryset.filter(q_objects).distinct().select_related('task', 'evaluator', 'evaluatee')
 
     def can_evaluate_user(self, evaluator, evaluatee):
@@ -57,17 +59,16 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         evaluator = self.request.user
         evaluatee = serializer.validated_data["evaluatee"]
         task = serializer.validated_data["task"]
+        evaluation_type = KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
 
         if evaluatee.role == 'top_management':
             raise PermissionDenied("Top management tapşırıqları dəyərləndirilə bilməz.")
 
         if evaluator == evaluatee:
-            if KPIEvaluation.objects.filter(
-                task=task, 
-                evaluatee=evaluatee, 
-                evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
-            ).exists():
+            evaluation_type = KPIEvaluation.EvaluationType.SELF_EVALUATION
+            if KPIEvaluation.objects.filter(task=task, evaluatee=evaluatee, evaluation_type=evaluation_type).exists():
                 raise ValidationError("Bu tapşırıq üçün artıq bir öz dəyərləndirmə etmisiniz.")
+
 
             instance = serializer.save(
                 evaluator=evaluator, 
@@ -84,30 +85,42 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                 )
         
         else:
+            evaluation_type = KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
             direct_superior = evaluatee.get_direct_superior()
             
             if not (direct_superior and direct_superior == evaluator) and not evaluator.role == 'admin':
                 raise PermissionDenied("Bu istifadəçini dəyərləndirməyə icazəniz yoxdur. Yalnız birbaşa rəhbər dəyərləndirmə edə bilər.")
 
-            if not KPIEvaluation.objects.filter(
-                task=task, 
-                evaluatee=evaluatee, 
-                evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
-            ).exists() and evaluator.role != 'admin':
+            if not KPIEvaluation.objects.filter(task=task, evaluatee=evaluatee, evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION).exists() and evaluator.role != 'admin':
                 raise ValidationError("Üst dəyərləndirmə etməzdən əvvəl işçinin öz dəyərləndirməsini tamamlaması lazımdır.")
 
-            if KPIEvaluation.objects.filter(
-                task=task, 
-                evaluator=evaluator, 
-                evaluatee=evaluatee, 
-                evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
-            ).exists():
+            if KPIEvaluation.objects.filter(task=task, evaluator=evaluator, evaluatee=evaluatee, evaluation_type=evaluation_type).exists():
                 raise ValidationError("Bu tapşırığı bu işçi üçün artıq dəyərləndirmisiniz.")
 
-            serializer.save(
-                evaluator=evaluator,
-                evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
+            instance = serializer.save(evaluator=evaluator, evaluation_type=evaluation_type)
+
+        if instance:
+            score = instance.self_score if instance.self_score is not None else instance.superior_score
+            create_log_entry(
+                actor=evaluator,
+                action_type=ActivityLog.ActionTypes.KPI_TASK_EVALUATED,
+                target_user=evaluatee,
+                target_task=task,
+                details={
+                    'task_title': task.title,
+                    'score': score,
+                    'evaluation_type': instance.get_evaluation_type_display()
+                }
             )
+
+            if instance.evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION:
+                try:
+                    logger.info(f"Rəhbərə KPI dəyərləndirmə sorğusu göndərilir: {instance.evaluatee.get_full_name()}")
+                    send_kpi_evaluation_request_email(instance)
+                except Exception as e:
+                    logger.error(f"KPI dəyərləndirmə e-poçtu göndərilərkən xəta baş verdi: {e}", exc_info=True)
+
+
 
 
     @action(detail=False, methods=['get'])
