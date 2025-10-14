@@ -50,6 +50,8 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         
         return super().partial_update(request, *args, **kwargs)
 
+    # ... (faylın əvvəli)
+
     @action(detail=False, methods=['get'], url_path='evaluable-users')
     def evaluable_users(self, request):
         evaluator = request.user
@@ -73,18 +75,23 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
                 role='top_management'
             ).select_related('department', 'position')
 
+        # --- KÖHNƏ FİLTR KODUNU BU HİSSƏDƏN TAMAMİLƏ SİLİN ---
+        # --- VƏ AŞAĞIDAKI İLƏ ƏVƏZ EDİN ---
+
         if evaluator.role == 'admin' and department_id:
             try:
                 dept_id = int(department_id)
                 base_users_qs = base_users_qs.filter(
-                    Q(department_id=dept_id) |  
-                    Q(managed_department__id=dept_id) | 
-                    Q(led_department__id=dept_id) |  
-                    Q(top_managed_departments__id=dept_id) 
+                    Q(department_id=dept_id) |
+                    Q(managed_department__id=dept_id) |
+                    Q(led_department__id=dept_id) |
+                    Q(top_managed_departments__id=dept_id)
                 ).distinct()
             except (ValueError, TypeError):
                 pass
         
+        # --- DƏYİŞİKLİK BURADA BİTİR ---
+
         if evaluation_status in ['evaluated', 'pending']:
             evaluated_this_month_ids = UserEvaluation.objects.filter(
                 evaluation_date=evaluation_date
@@ -100,6 +107,8 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         context = {'request': request, 'evaluation_date': evaluation_date}
         serializer = UserForEvaluationSerializer(users_to_show, many=True, context=context)
         return Response(serializer.data)
+
+# ... (faylın qalanı)
     
     @action(detail=False, methods=['get'], url_path='my-performance-card')
     def my_performance_card(self, request):
