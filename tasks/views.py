@@ -16,15 +16,11 @@ from .utils import send_task_notification_email
 from .filters import TaskFilter
 from .pagination import CustomPageNumberPagination
 
-# Fəaliyyət tarixçəsi üçün importlar
 from reports.utils import create_log_entry
 from reports.models import ActivityLog
 
 
 def get_visible_tasks(user):
-    """
-    İstifadəçinin roluna görə görə biləcəyi tapşırıqları filterləyir.
-    """
     if user.role == "admin":
         return Task.objects.all()
 
@@ -35,9 +31,6 @@ def get_visible_tasks(user):
 
 
 class TaskViewSet(viewsets.ModelViewSet):
-    """
-    Tapşırıqların idarə edilməsi (CRUD) üçün ViewSet.
-    """
     serializer_class = TaskSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
@@ -51,13 +44,11 @@ class TaskViewSet(viewsets.ModelViewSet):
         creator = self.request.user
         assignee = serializer.validated_data["assignee"]
 
-        # 1. İcazə yoxlaması verilənlər bazasına yazmadan ƏVVƏL edilir.
         if creator != assignee and creator.role != 'admin':
             subordinates = creator.get_subordinates()
             if assignee not in subordinates:
                 raise PermissionDenied("Siz yalnız tabeliyinizdə olan işçilərə tapşırıq təyin edə bilərsiniz.")
 
-        # 2. Məntiq sadələşdirilir: tapşırığın statusu və e-poçt ehtiyacı təyin edilir.
         is_approved = True
         task_status = "TODO"
         needs_approval_email = False
@@ -69,14 +60,12 @@ class TaskViewSet(viewsets.ModelViewSet):
                 task_status = "PENDING"
                 needs_approval_email = True
 
-        # 3. Tapşırıq verilənlər bazasında YALNIZ BİR DƏFƏ yaradılır.
         task = serializer.save(
             created_by=creator, 
             approved=is_approved, 
             status=task_status
         )
 
-        # 4. Fəaliyyət qeydi HƏR ZAMAN yaradılır.
         create_log_entry(
             actor=creator,
             action_type=ActivityLog.ActionTypes.TASK_CREATED,
@@ -85,7 +74,6 @@ class TaskViewSet(viewsets.ModelViewSet):
             details={'task_title': task.title}
         )
 
-        # 5. E-poçt bildirişləri sonda göndərilir.
         if needs_approval_email:
             send_task_notification_email(task, notification_type="approval_request")
         elif creator != assignee:
@@ -97,7 +85,6 @@ class TaskViewSet(viewsets.ModelViewSet):
         
         updated_task = serializer.save()
         
-        # Status dəyişdikdə fəaliyyət qeydi yaradılır.
         if original_status != updated_task.status:
             create_log_entry(
                 actor=self.request.user,
@@ -113,9 +100,6 @@ class TaskViewSet(viewsets.ModelViewSet):
 
 
 class AssignableUserListView(generics.ListAPIView):
-    """
-    Bir istifadəçinin tapşırıq təyin edə biləcəyi digər istifadəçilərin siyahısı.
-    """
     serializer_class = TaskUserSerializer
     permission_classes = [permissions.IsAuthenticated]
     
@@ -124,16 +108,12 @@ class AssignableUserListView(generics.ListAPIView):
 
 
 class HomeStatsView(APIView):
-    """
-    Ana səhifə üçün statistik məlumatları qaytarır.
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         base_queryset = get_visible_tasks(request.user)
         today = timezone.now().date()
         
-        # Rəhbərlər üçün yalnız tabeliyində olanların statistikası göstərilir
         stats_queryset = base_queryset
         if request.user.role not in ['admin', 'employee']:
              stats_queryset = base_queryset.exclude(assignee=request.user)
@@ -151,9 +131,6 @@ class HomeStatsView(APIView):
 
 
 class MonthlyTaskStatsView(APIView):
-    """
-    Aylara görə tamamlanmış tapşırıqların statistikasını qaytarır.
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
@@ -175,9 +152,6 @@ class MonthlyTaskStatsView(APIView):
         
 
 class PriorityTaskStatsView(APIView):
-    """
-    Vaciblik dərəcəsinə görə tapşırıqların statistikasını qaytarır.
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
@@ -192,9 +166,6 @@ class PriorityTaskStatsView(APIView):
 
 
 class TaskVerificationView(views.APIView):
-    """
-    E-poçt vasitəsilə göndərilən linklərlə tapşırıqları təsdiq/rədd etmək üçün.
-    """
     permission_classes = [permissions.AllowAny] 
 
     def get(self, request, token, *args, **kwargs):
@@ -239,9 +210,6 @@ class TaskVerificationView(views.APIView):
 
 
 class CalendarNoteViewSet(viewsets.ModelViewSet):
-    """
-    İstifadəçilərin təqvim qeydlərini idarə etməsi üçün.
-    """
     serializer_class = CalendarNoteSerializer
     permission_classes = [permissions.IsAuthenticated]
 
