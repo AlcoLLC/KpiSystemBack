@@ -34,7 +34,10 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
             evaluatee = User.objects.get(id=data['evaluatee_id'])
         except User.DoesNotExist:
             raise serializers.ValidationError({'evaluatee_id': 'Belə bir istifadəçi tapılmadı.'})
-
+        
+        if evaluatee.role == 'top_management':
+            raise serializers.ValidationError("Yüksək rəhbərlik (top management) dəyərləndirilə bilməz.")
+        
         if evaluator == evaluatee:
             raise serializers.ValidationError("İstifadəçilər özlərini dəyərləndirə bilməz.")
         
@@ -140,15 +143,20 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
         return None
     
     def get_can_evaluate(self, obj):
+        if obj.role == 'top_management':
+            return False
+        
         request = self.context.get('request')
+
         if not request or not hasattr(request, 'user'):
             return False
         
         evaluator = request.user
 
         if evaluator.role == 'admin':
-            return obj.role != 'top_management'
-        
+            if obj.id == evaluator.id:
+                return False
+            return True
         return obj.get_kpi_evaluator() == evaluator
     
 class MonthlyScoreSerializer(serializers.ModelSerializer):
