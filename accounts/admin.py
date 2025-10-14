@@ -20,7 +20,7 @@ class UserAdmin(BaseUserAdmin):
         fieldsets = super().get_fieldsets(request, obj)
         
         if obj and obj.role in ['top_management', ]:
-            additional_fields = ('role', 'profile_photo', 'phone_number', 'position',  'admin')
+            additional_fields = ('role', 'profile_photo', 'phone_number', 'position')
         else:
             additional_fields = ('role', 'department', 'profile_photo', 'phone_number', 'position')
             
