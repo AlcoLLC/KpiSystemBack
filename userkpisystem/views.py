@@ -52,46 +52,39 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='evaluable-users')
     def evaluable_users(self, request):
-        """
-        Dəyərləndirilə bilən istifadəçilərin siyahısını qaytarır.
-        Admin üçün departamentə görə filtrləməni dəstəkləyir.
-        """
         evaluator = request.user
-        date_str = request.query_params.get('date')
-        department_id = request.query_params.get('department')
-        evaluation_status = request.query_params.get('evaluation_status')
+        date_str = request.query_params.get('params[date]')
+        department_id = request.query_params.get('params[department]')
+        evaluation_status = request.query_params.get('evaluation_status') 
 
         try:
             evaluation_date = datetime.strptime(date_str, '%Y-%m').date().replace(day=1) if date_str else timezone.now().date().replace(day=1)
         except (ValueError, TypeError):
             evaluation_date = timezone.now().date().replace(day=1)
-
-        # 1. BAZA SORĞUSUNU TƏYİN EDİRİK
+        
         if evaluator.role == 'admin':
-            base_users_qs = User.objects.filter(is_active=True).exclude(
+            base_users_qs = User.objects.filter(
+                is_active=True
+            ).exclude(
                 Q(id=evaluator.id) | Q(role='top_management')
-            )
+            ).select_related('department', 'position')
         else:
             base_users_qs = evaluator.get_kpi_subordinates().exclude(
                 role='top_management'
-            )
+            ).select_related('department', 'position')
 
-        # 2. ADMİN ÜÇÜN DEPARTAMENT FİLTRİNİ TƏTBİQ EDİRİK (ƏN VACİB HİSSƏ)
         if evaluator.role == 'admin' and department_id:
             try:
                 dept_id = int(department_id)
-                # İstifadəçinin departamentlə bütün mümkün əlaqələrini yoxlayırıq
-                # Sizin User modelinizə əsasən bu sorğu düzgün olmalıdır
                 base_users_qs = base_users_qs.filter(
-                    Q(department_id=dept_id) |
-                    Q(managed_department__id=dept_id) |
-                    Q(led_department__id=dept_id) |
-                    Q(top_managed_departments__id=dept_id)
+                    Q(department_id=dept_id) |  
+                    Q(managed_department__id=dept_id) | 
+                    Q(led_department__id=dept_id) |  
+                    Q(top_managed_departments__id=dept_id) 
                 ).distinct()
             except (ValueError, TypeError):
                 pass
-
-        # 3. DƏYƏRLƏNDİRMƏ STATUSUNA GÖRƏ FİLTRLƏYİRİK
+        
         if evaluation_status in ['evaluated', 'pending']:
             evaluated_this_month_ids = UserEvaluation.objects.filter(
                 evaluation_date=evaluation_date
@@ -101,9 +94,8 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
                 base_users_qs = base_users_qs.filter(id__in=evaluated_this_month_ids)
             elif evaluation_status == 'pending':
                 base_users_qs = base_users_qs.exclude(id__in=evaluated_this_month_ids)
-
-        # 4. NƏTİCƏNİ HAZIRLAYIRIQ
-        users_to_show = base_users_qs.select_related('department', 'position').order_by('last_name', 'first_name')
+        
+        users_to_show = base_users_qs.order_by('last_name', 'first_name')
 
         context = {'request': request, 'evaluation_date': evaluation_date}
         serializer = UserForEvaluationSerializer(users_to_show, many=True, context=context)
