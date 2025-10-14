@@ -252,11 +252,14 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         new_score = request.data.get('score')
         new_comment = request.data.get('comment')
 
+        is_admin = user.is_staff or user.role == 'admin'
+
         is_self_eval = instance.evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION
         is_superior_eval = instance.evaluation_type == KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
 
-        if instance.evaluator != user:
-            raise PermissionDenied("Yalnız dəyərləndirməni yaradan şəxs redaktə edə bilər.")
+        if instance.evaluator != user and not is_admin:
+            raise PermissionDenied("Yalnız dəyərləndirməni yaradan şəxs və ya administrator redaktə edə bilər.")
+
 
         if is_self_eval:
             superior_eval_exists = KPIEvaluation.objects.filter(
@@ -264,8 +267,8 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                 evaluatee=instance.evaluatee,
                 evaluation_type=KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
             ).exists()
-            if superior_eval_exists:
-                raise PermissionDenied("Rəhbər dəyərləndirməsi edildikdən sonra öz dəyərləndirmənizi redaktə edə bilməzsiniz.")
+            if superior_eval_exists and not is_admin:
+                raise PermissionDenied("Rəhbər dəyərləndirməsi edildikdən sonra öz dəyərləndirmənizi redaktə edə bilməzsiniz (yalnız administrator dəyişə bilər).")
 
         old_score = None
         
