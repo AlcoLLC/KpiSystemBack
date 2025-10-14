@@ -66,10 +66,12 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             base_users_qs = User.objects.filter(
                 is_active=True
             ).exclude(
-                Q(id=evaluator.id) | Q(role__in=['admin', 'top_management'])
+                Q(id=evaluator.id) | Q(role='top_management')
             ).select_related('department', 'position')
         else:
-            base_users_qs = evaluator.get_kpi_subordinates().select_related('department', 'position')
+            base_users_qs = evaluator.get_kpi_subordinates().exclude(
+                role='top_management'
+            ).select_related('department', 'position')
 
         if evaluator.role == 'admin' and department_id:
             try:
