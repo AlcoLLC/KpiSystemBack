@@ -37,9 +37,6 @@ class TaskFilter(filters.FilterSet):
         )
     
     def filter_exclude_assignee(self, queryset, name, value):
-        """
-        Verilmiş ID-yə sahib olan icraçının tapşırıqlarını nəticələrdən çıxarır.
-        """
         try:
             return queryset.exclude(assignee__id=int(value))
         except (ValueError, TypeError):
