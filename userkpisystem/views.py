@@ -75,7 +75,13 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
 
         if evaluator.role == 'admin' and department_id:
             try:
-                base_users_qs = base_users_qs.filter(department_id=int(department_id))
+                dept_id = int(department_id)
+                base_users_qs = base_users_qs.filter(
+                    Q(department_id=dept_id) |  
+                    Q(managed_department__id=dept_id) | 
+                    Q(led_department__id=dept_id) |  
+                    Q(top_managed_departments__id=dept_id) 
+                ).distinct()
             except (ValueError, TypeError):
                 pass
         
