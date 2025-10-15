@@ -299,8 +299,13 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError):
                 raise ValidationError({"score": "Düzgün bir rəqəm daxil edin."})
 
-        if new_comment is not None:
-            instance.comment = new_comment
+        if 'comment' in request.data:
+            new_comment = request.data.get('comment')
+            
+            if new_comment and new_comment.strip():
+                instance.comment = new_comment.strip()
+            else:
+                instance.comment = None
 
         if 'attachment' in request.data:
             new_attachment = request.data.get('attachment')
