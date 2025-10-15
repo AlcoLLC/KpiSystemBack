@@ -32,6 +32,7 @@ class DashboardStatsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
+        user = request.user
         now = timezone.now()
         start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         
@@ -42,7 +43,13 @@ class DashboardStatsView(APIView):
 
         in_progress_tasks_count = Task.objects.filter(status='IN_PROGRESS').count()
 
-        active_users_count = User.objects.filter(is_active=True).count()
+        if user.role == 'admin':
+            active_users_count = User.objects.filter(is_active=True).count()
+        else:
+            subordinate_ids = user.get_subordinates().values_list('id', flat=True)
+            visible_user_ids = list(subordinate_ids) + [user.id]
+            active_users_count = User.objects.filter(id__in=visible_user_ids, is_active=True).count()
+
 
         stats = {
             'completed': completed_tasks_count,
