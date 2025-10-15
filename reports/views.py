@@ -37,7 +37,7 @@ class DashboardStatsView(APIView):
         
         completed_tasks_count = Task.objects.filter(
             status='DONE', 
-            updated_at__gte=start_of_month
+            completed_at__gte=start_of_month
         ).count()
 
         in_progress_tasks_count = Task.objects.filter(status='IN_PROGRESS').count()
