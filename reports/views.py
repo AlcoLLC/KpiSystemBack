@@ -8,11 +8,16 @@ from rest_framework.response import Response
 from django.utils import timezone
 from rest_framework.views import APIView
 from accounts.models import User
+from django_filters.rest_framework import DjangoFilterBackend
+from .filters import ActivityLogFilter
 
 class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ActivityLogSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = CustomPageNumberPagination
+
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = ActivityLogFilter
 
     def get_queryset(self):
         user = self.request.user
