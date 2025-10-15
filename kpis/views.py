@@ -265,6 +265,8 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         new_score = request.data.get('score')
         new_comment = request.data.get('comment')
 
+        attachment = request.data.get('attachment')
+
         is_admin = user.is_staff or user.role == 'admin'
 
         is_self_eval = instance.evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION
@@ -299,6 +301,13 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
         if new_comment is not None:
             instance.comment = new_comment
+
+        if 'attachment' in request.data:
+            if attachment:
+                instance.attachment = attachment
+                instance.attachment.delete(save=False)
+                instance.attachment = None
+
 
         if old_score is not None and old_score != new_score:
             history_entry = {
