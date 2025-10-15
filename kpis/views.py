@@ -303,11 +303,15 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             instance.comment = new_comment
 
         if 'attachment' in request.data:
-            if attachment:
-                instance.attachment = attachment
-                instance.attachment.delete(save=False)
+            new_attachment = request.data.get('attachment')
+            if new_attachment:
+                if instance.attachment:
+                    instance.attachment.delete(save=False)
+                instance.attachment = new_attachment
+            else:
+                if instance.attachment:
+                    instance.attachment.delete(save=False)
                 instance.attachment = None
-
 
         if old_score is not None and old_score != new_score:
             history_entry = {
