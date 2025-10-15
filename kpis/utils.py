@@ -10,6 +10,11 @@ def send_kpi_evaluation_request_email(kpi_evaluation):
     task = kpi_evaluation.task
     superior = evaluatee.get_direct_superior()
 
+    attachment_url = None
+
+    if kpi_evaluation.attachment:
+        attachment_url = kpi_evaluation.attachment.url
+
     if not superior:
         logger.warning(f"ID {evaluatee.id} olan istifadəçinin rəhbəri tapılmadı. KPI e-poçtu göndərilmədi.")
         return
@@ -30,7 +35,8 @@ def send_kpi_evaluation_request_email(kpi_evaluation):
         'superior_name': superior.get_full_name() or superior.username,
         'evaluation_url': evaluation_url,
         'self_score': kpi_evaluation.self_score,
-        'self_comment': kpi_evaluation.comment 
+        'self_comment': kpi_evaluation.comment,
+        'attachment_url': attachment_url,
     }
 
     try:

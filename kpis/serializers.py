@@ -11,7 +11,8 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
     task = serializers.SerializerMethodField(read_only=True)
     evaluator = serializers.SerializerMethodField(read_only=True)
     evaluatee = serializers.SerializerMethodField(read_only=True)
-    
+
+    attachment = serializers.FileField(required=False, allow_null=True, use_url=True)
     score = serializers.IntegerField(write_only=True) 
     
     class Meta:
@@ -21,7 +22,7 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
             'evaluatee_id', 'evaluatee', 'score', 'self_score', 
             'superior_score', 'final_score', 'comment', 
             'evaluation_type', 'created_at', 'updated_at',
-            'updated_by', 'history'
+            'updated_by', 'history', 'attachment'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'final_score',
                             'updated_by', 'history'
@@ -69,7 +70,8 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
         if not evaluatee_id:
             raise serializers.ValidationError({'evaluatee_id': 'Bu alan tələb olunur.'})
             
-        if not score:
+        is_creating = self.instance is None
+        if is_creating and not data.get('score'):
             raise serializers.ValidationError({'score': 'Skor tələb olunur.'})
 
         try:
@@ -89,7 +91,10 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         task = validated_data.pop('task')
         evaluatee = validated_data.pop('evaluatee')
-        score = validated_data.pop('score')
+        score = validated_data.pop('score', None)
+
+        validated_data.pop('task_id', None)
+        validated_data.pop('evaluatee_id', None)
         
         validated_data['task'] = task
         validated_data['evaluatee'] = evaluatee

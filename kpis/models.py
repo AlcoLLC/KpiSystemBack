@@ -38,6 +38,8 @@ class KPIEvaluation(models.Model):
     )
     
     comment = models.TextField(blank=True, null=True)
+    attachment = models.FileField(upload_to='kpi_attachments/', blank=True, null=True)
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
