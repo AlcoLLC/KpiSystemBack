@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import ActivityLog
 from accounts.serializers import UserSerializer
+from accounts.models import User
 
 class ActivityLogSerializer(serializers.ModelSerializer):
     actor_details = UserSerializer(source='actor', read_only=True)
@@ -59,3 +60,8 @@ class ActivityLogSerializer(serializers.ModelSerializer):
             return f"{target_user_name} adlı işçinin {month} ayı üzrə fəaliyyətini {score}/10 bal ilə qiymətləndirdi."
             
         return "Naməlum fəaliyyət."
+
+class UserFilterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'first_name', 'last_name']

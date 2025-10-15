@@ -1,8 +1,13 @@
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions, generics
 from django.db.models import Q
 from .models import ActivityLog
-from .serializers import ActivityLogSerializer
+from .serializers import ActivityLogSerializer, UserFilterSerializer 
+from tasks.models import Task
 from tasks.pagination import CustomPageNumberPagination
+from rest_framework.response import Response
+from django.utils import timezone
+from rest_framework.views import APIView
+from accounts.models import User
 
 class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ActivityLogSerializer
@@ -22,3 +27,33 @@ class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
         query = Q(actor_id__in=visible_user_ids) | Q(target_user_id__in=visible_user_ids)
         
         return ActivityLog.objects.filter(query).distinct().select_related('actor', 'target_user', 'target_task')
+    
+class DashboardStatsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        now = timezone.now()
+        start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        completed_tasks_count = Task.objects.filter(
+            status='DONE', 
+            updated_at__gte=start_of_month
+        ).count()
+
+        in_progress_tasks_count = Task.objects.filter(status='IN_PROGRESS').count()
+
+        active_users_count = User.objects.filter(is_active=True).count()
+
+        stats = {
+            'completed': completed_tasks_count,
+            'inProgress': in_progress_tasks_count,
+            'users': active_users_count,
+        }
+        return Response(stats)
+
+
+class UserListView(generics.ListAPIView):
+    queryset = User.objects.filter(is_active=True).order_by('first_name')
+    serializer_class = UserFilterSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None 
