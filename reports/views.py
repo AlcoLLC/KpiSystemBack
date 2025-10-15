@@ -3,18 +3,18 @@ from django.db.models import Q
 from .models import ActivityLog
 from .serializers import ActivityLogSerializer, UserFilterSerializer 
 from tasks.models import Task
-from tasks.pagination import CustomPageNumberPagination
 from rest_framework.response import Response
 from django.utils import timezone
 from rest_framework.views import APIView
 from accounts.models import User
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import ActivityLogFilter
+from .pagination import StandardResultsSetPagination 
 
 class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ActivityLogSerializer
     permission_classes = [permissions.IsAuthenticated]
-    pagination_class = CustomPageNumberPagination
+    pagination_class = StandardResultsSetPagination 
 
     filter_backends = [DjangoFilterBackend]
     filterset_class = ActivityLogFilter
