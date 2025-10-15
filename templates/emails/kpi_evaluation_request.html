@@ -119,6 +119,10 @@
             <p style="text-align: center; color: #1e40af; font-weight: 600;">
                 (Öz değerlendirme skoru: 1-10 arası)
             </p>
+
+            {% if attachment_url %}
+            <p>İşçi tərəfindən əlavə edilmiş fayl: <a href="{{ attachment_url }}">Fayla bax</a></p>
+            {% endif %}
             
             {% if self_comment %}
             <p><strong>İşçinin şərhi:</strong></p>
