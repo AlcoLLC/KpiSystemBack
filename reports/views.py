@@ -53,7 +53,17 @@ class DashboardStatsView(APIView):
 
 
 class UserListView(generics.ListAPIView):
-    queryset = User.objects.filter(is_active=True).order_by('first_name')
     serializer_class = UserFilterSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = None 
+    
+    def get_queryset(self):
+        user = self.request.user
+
+        if user.role == 'admin':
+            return User.objects.filter(is_active=True).order_by('first_name')
+        
+        subordinate_ids = user.get_subordinates().values_list('id', flat=True)
+        visible_user_ids = list(subordinate_ids) + [user.id]
+
+        return User.objects.filter(id__in=visible_user_ids, is_active=True).order_by('first_name')
