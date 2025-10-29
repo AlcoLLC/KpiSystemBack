@@ -3,7 +3,7 @@
 import json
 from django.core.management.base import BaseCommand
 from kpis.models import Kpi
-from accounts.models import CustomUser  # Modelinizin adı CustomUser ise
+from accounts.models import User  # Modelinizin adı CustomUser ise
 
 class Command(BaseCommand):
     help = 'JSON dosyasından tüm appler için veri yükler'
@@ -31,7 +31,7 @@ class Command(BaseCommand):
             for user_data in data['users']:
                 try:
                     # Eğer kullanıcı zaten varsa oluşturma (hata almamak için)
-                    if not CustomUser.objects.filter(username=user_data['username']).exists():
+                    if not User.objects.filter(username=user_data['username']).exists():
                         
                         # ÖNEMLİ: create_user veya create_superuser kullanın
                         # Bu, parolayı düz metin değil, hash'li olarak kaydeder.
@@ -40,11 +40,11 @@ class Command(BaseCommand):
                         
                         # JSON'daki 'is_superuser' alanına göre karar ver
                         if user_data.get('is_superuser', False):
-                            CustomUser.objects.create_superuser(
+                            User.objects.create_superuser(
                                 **user_data
                             )
                         else:
-                            user = CustomUser.objects.create_user(
+                            user = User.objects.create_user(
                                 password=password,
                                 **user_data
                             )
