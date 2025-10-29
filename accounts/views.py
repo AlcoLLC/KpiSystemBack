@@ -10,7 +10,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.decorators import action
 from .filters import UserFilter
 from django_filters.rest_framework import DjangoFilterBackend
-
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().select_related('department', 'position').order_by('first_name', 'last_name')
@@ -44,6 +44,16 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, context={'request': request}) 
+        
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as e:
+            raise InvalidToken(e)
+
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
 
 class LogoutView(APIView):

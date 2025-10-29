@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import User, Department, Position
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, login
+from django.utils.translation import gettext_lazy as _
 
 User = get_user_model()
 
@@ -191,6 +192,12 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
             raise serializers.ValidationError("İstifadəçi aktiv deyil.")
             
         data = super().validate(attrs={self.username_field: user.get_username(), "password": password})
+
+        request = self.context.get('request')
+        
+        if request:
+            login(request, user)
+            pass
 
         user_serializer = UserSerializer(self.user)
         data['user'] = user_serializer.data
