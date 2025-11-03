@@ -31,11 +31,15 @@ if DEBUG:
 else:
     CORS_ALLOWED_ORIGINS = [
         'http://91.99.112.51',
-        "https://91.99.112.51"
+        "https://91.99.112.51",
+        'http://metrics.azlub.com',  
+        "https://metrics.azlub.com",
     ]
     CSRF_TRUSTED_ORIGINS = [
         'http://91.99.112.51',
-        "https://91.99.112.51"
+        "https://91.99.112.51",
+        'http://metrics.azlub.com',
+        "https://metrics.azlub.com",
     ]
 
 AUTH_USER_MODEL = "accounts.User"
