@@ -23,7 +23,7 @@ def send_kpi_evaluation_request_email(kpi_evaluation):
         logger.warning(f"Rəhbərin (ID: {superior.id}) e-poçt ünvanı yoxdur. E-poçt göndərilmədi.")
         return
 
-    site_url = getattr(settings, "FRONTEND_URL", "http://91.99.112.51/kpi_system") 
+    site_url = getattr(settings, "FRONTEND_URL", "https://metrics.azlub.com/kpi_system") 
     evaluation_url = f"{site_url}/"
 
     subject = f"KPI Dəyərləndirmə Tələbi: {evaluatee.get_full_name()} - {task.title}"

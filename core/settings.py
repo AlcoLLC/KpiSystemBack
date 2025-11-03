@@ -192,7 +192,7 @@ EMAIL_BACKEND = config('EMAIL_BACKEND')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL')
 
 
-SITE_URL = 'http://91.99.112.51:100'
+SITE_URL = 'https://metrics.azlub.com'
 
 CONTACT_FORM_SETTINGS = {
     'IP_SUBMISSION_LIMIT': 1,  
