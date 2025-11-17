@@ -28,7 +28,13 @@ class UserSerializer(serializers.ModelSerializer):
     department = serializers.PrimaryKeyRelatedField(
         queryset=Department.objects.all(), required=False, allow_null=True
     )
+
     top_managed_departments = serializers.PrimaryKeyRelatedField(
+        queryset=Department.objects.all(), many=True, required=False 
+        
+    )
+
+    ceo_managed_departments = serializers.PrimaryKeyRelatedField( 
         queryset=Department.objects.all(), many=True, required=False
     )
 
@@ -37,7 +43,8 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             "id", "email", "role", "role_display", "all_departments", 
             'position', 'position_details', "department", "first_name", "last_name", 
-            "profile_photo", "phone_number", "password", "top_managed_departments"
+            "profile_photo", "phone_number", "password", "top_managed_departments",
+            "ceo_managed_departments",
         ]
         read_only_fields = ['role_display', 'all_departments', 'position_details']
 
@@ -62,6 +69,10 @@ class UserSerializer(serializers.ModelSerializer):
         if hasattr(obj, 'top_managed_departments'):
             for dept in obj.top_managed_departments.all(): 
                 departments.add(dept.name)
+
+        if hasattr(obj, 'ceo_managed_departments'):
+            for dept in obj.ceo_managed_departments.all(): 
+                departments.add(dept.name)
                 
         return list(departments)
 
@@ -81,6 +92,7 @@ class UserSerializer(serializers.ModelSerializer):
             validated_data['username'] = validated_data.get('email')
         
         top_departments = validated_data.pop('top_managed_departments', None)
+        ceo_departments = validated_data.pop('ceo_managed_departments', None)
         password = validated_data.pop('password', None)
         
         role = validated_data.get('role')
@@ -96,11 +108,15 @@ class UserSerializer(serializers.ModelSerializer):
 
         if top_departments is not None:
             user.top_managed_departments.set(top_departments)
+
+        if ceo_departments is not None:
+            user.ceo_managed_departments.set(ceo_departments)
         
         return user
 
     def update(self, instance, validated_data):
         top_departments = validated_data.pop('top_managed_departments', None)
+        ceo_departments = validated_data.pop('ceo_managed_departments', None)
         password = validated_data.pop('password', None)
         profile_photo = validated_data.get('profile_photo')
 
@@ -137,6 +153,9 @@ class UserSerializer(serializers.ModelSerializer):
 
         if top_departments is not None:
             instance.top_managed_departments.set(top_departments)
+
+        if ceo_departments is not None:
+            instance.ceo_managed_departments.set(ceo_departments)
         
         return instance
 
@@ -152,9 +171,13 @@ class DepartmentSerializer(serializers.ModelSerializer):
         queryset=User.objects.filter(role='top_management'), many=True, required=False, allow_null=True
     )
 
+    ceo = serializers.PrimaryKeyRelatedField( 
+        queryset=User.objects.filter(role='ceo'), many=True, required=False, allow_null=True
+    )
+
     class Meta:
         model = Department
-        fields = ['id', 'name', 'manager', 'department_lead', 'top_management']
+        fields = ['id', 'name', 'manager', 'department_lead', 'top_management', 'ceo']
 
     def update(self, instance, validated_data):
         new_lead = validated_data.get('department_lead')

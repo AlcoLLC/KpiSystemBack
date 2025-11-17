@@ -37,7 +37,10 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             return False 
             
         if evaluatee.role == 'top_management':
-            return False 
+            if evaluator.role == 'ceo':
+                kpi_evaluator = evaluatee.get_kpi_evaluator() 
+                return kpi_evaluator and kpi_evaluator.id == evaluator.id
+            return False
         direct_superior = evaluatee.get_direct_superior()
         
         if evaluator.role == 'admin':
@@ -62,7 +65,27 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         evaluation_type = KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
 
         if evaluatee.role == 'top_management':
-            raise PermissionDenied("Top management tapşırıqları dəyərləndirilə bilməz.")
+            kpi_evaluator = evaluatee.get_kpi_evaluator() 
+            if evaluator.role != 'ceo' and evaluator.role != 'admin':
+                raise PermissionDenied("Top Management tapşırıqlarını yalnız CEO və ya Administrator dəyərləndirə bilər.")
+            
+            if not self.can_evaluate_user(evaluator, evaluatee):
+                raise PermissionDenied("Bu Top Management üzvünü dəyərləndirməyə icazəniz yoxdur.")
+
+            if KPIEvaluation.objects.filter(task=task, evaluator=evaluator, evaluatee=evaluatee, evaluation_type=evaluation_type).exists():
+                raise ValidationError("Bu tapşırığı bu Top Management üzvü üçün artıq dəyərləndirmisiniz.")
+            
+            instance = serializer.save(evaluator=evaluator, evaluation_type=evaluation_type)
+            if instance:
+                score = instance.superior_score
+                create_log_entry(
+                    actor=evaluator,
+                    action_type=ActivityLog.ActionTypes.KPI_TASK_EVALUATED,
+                    target_user=evaluatee,
+                    target_task=task,
+                    details={'task_title': task.title, 'score': score, 'evaluation_type': instance.get_evaluation_type_display()}
+                )
+            return
 
         if evaluator == evaluatee:
             evaluation_type = KPIEvaluation.EvaluationType.SELF_EVALUATION
@@ -86,16 +109,17 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         
         else:
             evaluation_type = KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION
-            direct_superior = evaluatee.get_direct_superior()
+            kpi_evaluator = evaluatee.get_kpi_evaluator() 
+            is_kpi_evaluator = kpi_evaluator and kpi_evaluator == evaluator
             
-            if not (direct_superior and direct_superior == evaluator) and not evaluator.role == 'admin':
-                raise PermissionDenied("Bu istifadəçini dəyərləndirməyə icazəniz yoxdur. Yalnız birbaşa rəhbər dəyərləndirmə edə bilər.")
+            if not is_kpi_evaluator and not evaluator.role == 'admin':
+                raise PermissionDenied("Bu istifadəçini dəyərləndirməyə icazəniz yoxdur. Yalnız KPI qiymətləndiricisi dəyərləndirmə edə bilər.")
 
             if not KPIEvaluation.objects.filter(task=task, evaluatee=evaluatee, evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION).exists() and evaluator.role != 'admin':
-                raise ValidationError("Üst dəyərləndirmə etməzdən əvvəl işçinin öz dəyərləndirməsini tamamlaması lazımdır.")
+                 raise ValidationError("Üst dəyərləndirmə etməzdən əvvəl işçinin öz dəyərləndirməsini tamamlaması lazımdır.")
 
             if KPIEvaluation.objects.filter(task=task, evaluator=evaluator, evaluatee=evaluatee, evaluation_type=evaluation_type).exists():
-                raise ValidationError("Bu tapşırığı bu işçi üçün artıq dəyərləndirmisiniz.")
+                 raise ValidationError("Bu tapşırığı bu işçi üçün artıq dəyərləndirmisiniz.")
 
             instance = serializer.save(evaluator=evaluator, evaluation_type=evaluation_type)
 
@@ -144,7 +168,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
         queryset = Task.objects.filter(
             tasks_to_show_q, status='DONE'
-        ).exclude(assignee__role='top_management').select_related(
+        ).select_related(
             'assignee', 'created_by'
         ).prefetch_related(
             'evaluations'
@@ -436,11 +460,13 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             Q(assignee_id__in=visible_user_ids),
             status='DONE'
         ).exclude(
-            Q(has_self_eval=True, has_superior_eval=True) |
-            Q(assignee__role='top_management')
+            Q(has_self_eval=True, has_superior_eval=True) 
         ).select_related('assignee', 'created_by').prefetch_related(
             'evaluations'
         ).order_by('-completed_at')
+
+        if user.role not in ['admin', 'ceo']:
+            tasks = tasks.exclude(assignee__role='top_management')
         
         serializer = TaskSerializer(tasks, many=True, context={'request': request})
         return Response(serializer.data)

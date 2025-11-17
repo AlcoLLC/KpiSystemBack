@@ -36,7 +36,8 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'evaluatee_id': 'Belə bir istifadəçi tapılmadı.'})
         
         if evaluatee.role == 'top_management':
-            raise serializers.ValidationError("Yüksək rəhbərlik (top management) dəyərləndirilə bilməz.")
+            if evaluator.role not in ['admin', 'ceo']:
+                raise serializers.ValidationError("Yüksək rəhbərlik (top management) yalnız CEO və ya Admin tərəfindən dəyərləndirilə bilər.")
         
         if evaluator == evaluatee:
             raise serializers.ValidationError("İstifadəçilər özlərini dəyərləndirə bilməz.")

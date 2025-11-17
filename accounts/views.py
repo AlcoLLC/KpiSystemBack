@@ -79,7 +79,6 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
 
 
 class FilterableDepartmentListView(APIView):
-
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
@@ -91,6 +90,9 @@ class FilterableDepartmentListView(APIView):
 
         elif user.role == 'top_management':
             queryset = user.top_managed_departments.all().order_by('name')
+
+        elif user.role == 'ceo': 
+            queryset = user.ceo_managed_departments.all().order_by('name')
 
         serializer = DepartmentSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)

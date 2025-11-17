@@ -33,6 +33,13 @@ class Department(models.Model):
         limit_choices_to={'role': 'top_management'}
     )
 
+    ceo = models.ManyToManyField(
+        'User',
+        blank=True,
+        related_name='ceo_managed_departments',
+        limit_choices_to={'role': 'ceo'}
+    )
+
     def __str__(self):
         return self.name
 
@@ -54,6 +61,7 @@ class Position(models.Model):
 class User(AbstractUser):
     ROLE_CHOICES = [
         ("admin", "Admin"),
+        ("ceo", "CEO"),
         ("top_management", "Yuxarı İdarəetmə"),
         ("department_lead", "Departament Rəhbəri"),
         ("manager", "Menecer"),
@@ -110,8 +118,9 @@ class User(AbstractUser):
             "employee": "Manager or Department Lead",
             "manager": "Department Lead",
             "department_lead": "Top Management",
-            "top_management": "N/A", 
+            "top_management": "CEO", 
             "admin": "N/A",
+            "ceo": "N/A",
         }
         return role_hierarchy.get(self.role, "Unknown")
     
@@ -127,8 +136,14 @@ class User(AbstractUser):
             return None
 
         elif self.role == "department_lead":
+            if self.department and self.department.top_management.exists():
+                return self.department.top_management.first()
             return User.objects.filter(role="top_management").first()
 
+        elif self.role == "top_management":
+            if self.top_managed_departments.exists() and self.top_managed_departments.first().ceo.exists():
+                return self.top_managed_departments.first().ceo.first()
+            return User.objects.filter(role="ceo").first() 
         else:
             return None
         
@@ -157,6 +172,20 @@ class User(AbstractUser):
                     role="employee",
                     is_active=True
                 )
+            
+        if self.role == "ceo":
+            managed_departments = self.ceo_managed_departments.all()
+            if managed_departments.exists():
+                return User.objects.filter(
+                    Q(top_managed_departments__in=managed_departments) | Q(role="top_management"), 
+                    role="top_management", 
+                    is_active=True
+                ).distinct()
+            return User.objects.filter(role="top_management", is_active=True)
+
+
+        if self.role == "top_management":
+            return User.objects.filter(role="department_lead", is_active=True)
         
         return User.objects.none()
 
@@ -195,7 +224,7 @@ class User(AbstractUser):
     
 
     def get_kpi_evaluator(self):
-        if self.role in ["admin", "top_management"] or not self.department:
+        if self.role in ["admin", "ceo"] or not self.department:
             return None
 
         if self.role == 'employee':
@@ -209,6 +238,11 @@ class User(AbstractUser):
         if self.department.top_management.exists():
             return self.department.top_management.first()
         
+        if self.role == 'top_management': 
+            if self.top_managed_departments.exists() and self.top_managed_departments.first().ceo.exists():
+                return self.top_managed_departments.first().ceo.first()
+            return User.objects.filter(role="ceo").first()
+        
         return None
 
     def get_kpi_subordinates(self):
@@ -216,6 +250,16 @@ class User(AbstractUser):
             return User.objects.filter(is_active=True).exclude(
                 Q(id=self.id) | Q(role__in=['admin', 'top_management'])
             )
+        
+        if self.role == 'ceo':
+            managed_departments = self.ceo_managed_departments.all()
+            if managed_departments.exists():
+                return User.objects.filter(
+                    top_managed_departments__in=managed_departments, 
+                    role='top_management', 
+                    is_active=True
+                ).distinct()
+            return User.objects.filter(role="top_management", is_active=True).distinct()
 
         if not self.department:
             return User.objects.none()
