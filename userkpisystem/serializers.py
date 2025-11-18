@@ -2,7 +2,64 @@ from rest_framework import serializers
 from .models import UserEvaluation
 from accounts.models import User
 from django.utils import timezone
-import datetime
+
+class UserForEvaluationSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source='department.name', read_only=True, default=None)
+    role_display = serializers.CharField(source='get_role_display', read_only=True)
+    selected_month_evaluation = serializers.SerializerMethodField()
+    can_evaluate = serializers.SerializerMethodField()
+    position_name = serializers.CharField(source='position.name', read_only=True, default=None)
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'first_name', 'last_name', 'profile_photo',
+            'department_name', 'role_display', 'selected_month_evaluation',
+            'can_evaluate', 'position_name',
+        ]
+
+    def get_selected_month_evaluation(self, obj):
+        evaluation_date = self.context.get('evaluation_date')
+
+        if not evaluation_date:
+            today = timezone.now().date()
+            evaluation_date = today.replace(day=1)
+
+        evaluation = UserEvaluation.objects.filter(
+            evaluatee=obj,
+            evaluation_date=evaluation_date
+        ).first()
+
+        if evaluation:
+            return UserEvaluationSerializer(evaluation).data
+        return None
+    
+    def get_can_evaluate(self, obj):
+        request = self.context.get('request')
+
+        if not request or not hasattr(request, 'user'):
+            return False
+        
+        evaluator = request.user
+
+        if evaluator.role == 'admin':
+            if obj.id == evaluator.id:
+                return False
+            return True
+        
+        if obj.role == 'top_management':
+            if evaluator.role == 'ceo':
+                return obj.get_kpi_evaluator() == evaluator
+            return False
+        
+        return obj.get_kpi_evaluator() == evaluator
+
+
+class MonthlyScoreSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserEvaluation
+        fields = ['evaluation_date', 'score']
+
 
 class UserEvaluationSerializer(serializers.ModelSerializer):
     evaluatee_id = serializers.IntegerField(write_only=True)
@@ -32,23 +89,29 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         
         try:
             evaluatee = User.objects.get(id=data['evaluatee_id'])
+            data['evaluatee'] = evaluatee
         except User.DoesNotExist:
             raise serializers.ValidationError({'evaluatee_id': 'Belə bir istifadəçi tapılmadı.'})
         
         if evaluatee.role == 'top_management':
-            if evaluator.role not in ['admin', 'ceo']:
-                raise serializers.ValidationError("Yüksək rəhbərlik (top management) yalnız CEO və ya Admin tərəfindən dəyərləndirilə bilər.")
-        
+            if evaluator.role not in ['ceo', 'admin']:
+                raise serializers.ValidationError("Yüksək rəhbərlik (Top Management) yalnız CEO və ya Admin tərəfindən dəyərləndirilə bilər.")
+            
+            kpi_evaluator = evaluatee.get_kpi_evaluator()
+            if evaluator.role == 'ceo' and kpi_evaluator != evaluator:
+                raise serializers.ValidationError("Bu Top Management üzvünü dəyərləndirməyə icazəniz yoxdur.")
+            
         if evaluator == evaluatee:
             raise serializers.ValidationError("İstifadəçilər özlərini dəyərləndirə bilməz.")
         
-        kpi_evaluator = evaluatee.get_kpi_evaluator()
-        is_admin = evaluator.role == 'admin'
+        elif evaluatee.role != 'top_management':
+            kpi_evaluator = evaluatee.get_kpi_evaluator()
+            is_admin = evaluator.role == 'admin'
 
-        if not is_admin and kpi_evaluator != evaluator:
-            raise serializers.ValidationError(
-                "Yalnız işçinin KPI iyerarxiyasındakı birbaşa rəhbəri və ya Admin dəyərləndirmə edə bilər."
-            )
+            if not is_admin and kpi_evaluator != evaluator:
+                raise serializers.ValidationError(
+                    "Yalnız işçinin KPI iyerarxiyasındakı birbaşa rəhbəri və ya Admin dəyərləndirmə edə bilər."
+                )
         
         evaluation_date = data['evaluation_date'].replace(day=1)
         
@@ -64,8 +127,8 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
                 f"{evaluation_date.strftime('%Y-%m')} ayı üçün bu işçiyə aid bir dəyərləndirmə artıq mövcuddur."
             )
             
-        data['evaluatee'] = evaluatee
         return data
+    
     def get_user_details(self, user_obj):
         position_name = user_obj.position.name if user_obj.position else None
         if user_obj:
@@ -111,56 +174,3 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         instance.save()
         
         return instance
-
-class UserForEvaluationSerializer(serializers.ModelSerializer):
-    department_name = serializers.CharField(source='department.name', read_only=True, default=None)
-    role_display = serializers.CharField(source='get_role_display', read_only=True)
-    selected_month_evaluation = serializers.SerializerMethodField()
-    can_evaluate = serializers.SerializerMethodField()
-    position_name = serializers.CharField(source='position.name', read_only=True, default=None)
-
-    class Meta:
-        model = User
-        fields = [
-            'id', 'first_name', 'last_name', 'profile_photo',
-            'department_name', 'role_display', 'selected_month_evaluation',
-            'can_evaluate', 'position_name',
-        ]
-
-    def get_selected_month_evaluation(self, obj):
-        evaluation_date = self.context.get('evaluation_date')
-
-        if not evaluation_date:
-            today = timezone.now().date()
-            evaluation_date = today.replace(day=1)
-
-        evaluation = UserEvaluation.objects.filter(
-            evaluatee=obj,
-            evaluation_date=evaluation_date
-        ).first()
-
-        if evaluation:
-            return UserEvaluationSerializer(evaluation).data
-        return None
-    
-    def get_can_evaluate(self, obj):
-        if obj.role == 'top_management':
-            return False
-        
-        request = self.context.get('request')
-
-        if not request or not hasattr(request, 'user'):
-            return False
-        
-        evaluator = request.user
-
-        if evaluator.role == 'admin':
-            if obj.id == evaluator.id:
-                return False
-            return True
-        return obj.get_kpi_evaluator() == evaluator
-    
-class MonthlyScoreSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UserEvaluation
-        fields = ['evaluation_date', 'score']

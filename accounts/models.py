@@ -224,7 +224,13 @@ class User(AbstractUser):
     
 
     def get_kpi_evaluator(self):
-        if self.role in ["admin", "ceo"] or not self.department:
+        if self.role in ["admin", "ceo"]:
+            return None
+            
+        if not self.department:
+            # Department yoxdursa, top_management üçün CEO-nu qaytar
+            if self.role == 'top_management':
+                return User.objects.filter(role="ceo", is_active=True).first()
             return None
 
         if self.role == 'employee':
@@ -235,13 +241,23 @@ class User(AbstractUser):
             if self.department.department_lead:
                 return self.department.department_lead
 
-        if self.department.top_management.exists():
-            return self.department.top_management.first()
+        if self.role in ['employee', 'manager', 'department_lead']:
+            if self.department.top_management.exists():
+                return self.department.top_management.first()
         
         if self.role == 'top_management': 
-            if self.top_managed_departments.exists() and self.top_managed_departments.first().ceo.exists():
-                return self.top_managed_departments.first().ceo.first()
-            return User.objects.filter(role="ceo").first()
+            # Əgər department-ə CEO təyin edilibsə
+            if self.department and self.department.ceo.exists():
+                return self.department.ceo.first()
+            
+            # Əgər top_managed_departments vasitəsilə CEO-ya bağlıdırsa
+            if self.top_managed_departments.exists():
+                first_dept = self.top_managed_departments.first()
+                if first_dept.ceo.exists():
+                    return first_dept.ceo.first()
+            
+            # Əks halda, sistemdəki ilk CEO-nu qaytar
+            return User.objects.filter(role="ceo", is_active=True).first()
         
         return None
 
@@ -252,13 +268,19 @@ class User(AbstractUser):
             )
         
         if self.role == 'ceo':
+            # CEO bütün top_management istifadəçilərini görməlidir
+            # Həm ceo_managed_departments-dakı, həm də hamısını
             managed_departments = self.ceo_managed_departments.all()
+            
             if managed_departments.exists():
+                # Əgər CEO müəyyən departamentləri idarə edirsə
                 return User.objects.filter(
-                    top_managed_departments__in=managed_departments, 
+                    Q(top_managed_departments__in=managed_departments) | Q(role='top_management'),
                     role='top_management', 
                     is_active=True
                 ).distinct()
+            
+            # Əgər heç bir departament təyin edilməyibsə, bütün top_management-i göstər
             return User.objects.filter(role="top_management", is_active=True).distinct()
 
         if not self.department:
@@ -272,12 +294,14 @@ class User(AbstractUser):
                     role__in=['department_lead', 'manager', 'employee'], 
                     is_active=True
                 )
+            # Əgər heç bir departament təyin edilməyibsə
+            return User.objects.none()
         
         elif self.role == 'department_lead':
-             try:
+            try:
                 led_dept = self.led_department
                 return User.objects.filter(department=led_dept, role__in=['manager', 'employee'], is_active=True)
-             except Department.DoesNotExist:
+            except Department.DoesNotExist:
                 return User.objects.none()
         elif self.role == 'manager':
             try:

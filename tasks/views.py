@@ -26,6 +26,16 @@ def get_visible_tasks(user):
 
     subordinate_ids = user.get_subordinates().values_list('id', flat=True)
     query = Q(assignee=user) | Q(assignee_id__in=list(subordinate_ids))
+
+    if user.role == "ceo":
+        top_management_subordinates = user.get_kpi_subordinates().filter(
+            role='top_management'
+        ).values_list('id', flat=True)
+        
+        if top_management_subordinates:
+             query |= Q(assignee_id__in=list(top_management_subordinates))
+             
+        query |= Q(assignee=user)
     
     return Task.objects.filter(query).distinct()
 
@@ -53,9 +63,16 @@ class TaskViewSet(viewsets.ModelViewSet):
         task_status = "TODO"
         needs_approval_email = False
 
-        if creator == assignee:
+        if creator.role == 'top_management':
             superior = creator.get_superior()
-            if superior:
+            if superior and superior.role == 'ceo':
+                is_approved = False
+                task_status = "PENDING"
+                needs_approval_email = True
+        
+        elif creator == assignee:
+            superior = creator.get_superior()
+            if superior: 
                 is_approved = False
                 task_status = "PENDING"
                 needs_approval_email = True
@@ -115,7 +132,7 @@ class HomeStatsView(APIView):
         today = timezone.now().date()
         
         stats_queryset = base_queryset
-        if request.user.role not in ['admin', 'employee']:
+        if request.user.role not in ['admin', 'employee', 'ceo']:
              stats_queryset = base_queryset.exclude(assignee=request.user)
 
         data = {
