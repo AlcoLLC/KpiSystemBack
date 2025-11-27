@@ -84,6 +84,13 @@
             margin: 10px 0;
             font-size: 14px;
         }
+        .superior-eval-info {
+            background-color: #fce7f3; 
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #db2777;
+        }
     </style>
 </head>
 <body>
@@ -95,10 +102,18 @@
     <div class="content">
         <p><strong>Salam {{ superior_name }},</strong></p>
         
+        {% if is_top_management_email %}
         <p>
             <strong>{{ evaluatee_name }}</strong> adlı işçi "<strong>{{ task.title }}</strong>" tapşırığı üçün 
-            öz değerlendirməsini tamamlamışdır və indi sizin üst dəyərləndirmənizi gözləyir.
+            <strong>birbaşa rəhbərinin</strong> dəyərləndirməsini tamamlamışdır. İndi bu prosesi 
+            <strong>Yuxarı İdarəetmə Nümayəndəsi</strong> olaraq sizdən təsdiqlənməsi/dəyərləndirilməsi tələb olunur.
         </p>
+        {% else %}
+        <p>
+            <strong>{{ evaluatee_name }}</strong> adlı işçi "<strong>{{ task.title }}</strong>" tapşırığı üçün 
+            öz dəyərləndirməsini tamamlamışdır və indi sizin üst dəyərləndirmənizi gözləyir.
+        </p>
+        {% endif %}
 
         <div class="evaluation-info">
             <h3>📋 Tapşırıq Məlumatları</h3>
@@ -112,12 +127,12 @@
 
         {% if self_score %}
         <div class="self-eval-info">
-            <h3>👤 İşçinin Öz Değerlendirməsi</h3>
+            <h3>👤 İşçinin Öz Dəyərləndirməsi</h3>
             <div class="score-display">
                 {{ self_score }}/10
             </div>
             <p style="text-align: center; color: #1e40af; font-weight: 600;">
-                (Öz değerlendirme skoru: 1-10 arası)
+                (Öz dəyərləndirmə skoru: 1-10 arası)
             </p>
 
             {% if attachment_url %}
@@ -133,14 +148,37 @@
         </div>
         {% endif %}
 
+        {% if is_top_management_email and superior_score %}
+        <div class="superior-eval-info">
+            <h3>💼 Birbaşa Rəhbərin Dəyərləndirməsi</h3>
+            <div class="score-display" style="color: #db2777; background-color: #fbcfe8;">
+                {{ superior_score }}/100
+            </div>
+            <p style="text-align: center; color: #db2777; font-weight: 600;">
+                (Birbaşa Rəhbər Skoru: 1-100 arası)
+            </p>
+            
+            {% if superior_comment %}
+            <p><strong>Rəhbərin şərhi:</strong></p>
+            <div class="comment-box" style="background-color: #fdf2f8; border-color: #fbcfe8;">
+                {{ superior_comment }}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+        
         <div class="scale-note">
             <strong>⚡ Diqqət:</strong> Sizin verəcəyiniz qiymət <strong>1-100 arası</strong> şkalada olmalıdır 
-            və bu <strong>yekun dəyərləndirmə</strong> kimi sayılacaq. İşçinin öz değerlendirməsi yalnız istinad üçün göstərilmişdir.
+            və bu <strong>yekun dəyərləndirmə</strong> kimi sayılacaq. İşçinin öz və/və ya birbaşa rəhbərinin dəyərləndirməsi yalnız istinad üçün göstərilmişdir.
         </div>
 
         <div style="text-align: center;">
             <a href="{{ evaluation_url }}" class="cta-button">
+                {% if is_top_management_email %}
+                ✅ Təsdiqlə və ya Dəyərləndir (1-100)
+                {% else %}
                 🎯 İndi Qiymətləndirin (1-100)
+                {% endif %}
             </a>
         </div>
 

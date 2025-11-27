@@ -1,28 +1,6 @@
 from django.contrib import admin
 from .models import User, Department, Position
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django import forms
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
-
-class UserAdminForm(forms.ModelForm):
-    top_managed_departments = forms.ModelMultipleChoiceField(
-        queryset=Department.objects.all(),
-        required=False,
-        label="Yönettiği Üst Düzey Departmanlar"
-    )
-
-    ceo_managed_departments = forms.ModelMultipleChoiceField(
-        queryset=Department.objects.all(),
-        required=False,
-        label="Yönettiği CEO Departmanları"
-    )
-
-    class Meta:
-        model = User
-        fields = '__all__' 
-
 
 @admin.register(Position)
 class PositionAdmin(admin.ModelAdmin):
@@ -32,53 +10,35 @@ class PositionAdmin(admin.ModelAdmin):
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    form = UserAdminForm 
-    
-    list_display = ("id", "username", "email", 'position', "role","department", "first_name", "last_name", "is_staff")
+    list_display = ("id", "username", "email", 'position', "role", "department", "first_name", "last_name", "is_staff")
     list_filter = ("role", "is_staff", 'position', "is_superuser", "groups")
     search_fields = ('username', 'email', 'first_name', 'last_name')
     ordering = ('id',)
-    readonly_fields = "password",
-    
-    filter_horizontal = ('groups', 'user_permissions',)
 
 
     def get_fieldsets(self, request, obj=None):
-        fieldsets = list(super().get_fieldsets(request, obj))
+        fieldsets = super().get_fieldsets(request, obj)
         
-        additional_fields = ['role', 'department', 'profile_photo', 'phone_number', 'position']
-        m2m_field = None
-        
-        if obj and obj.role == 'ceo':
-            m2m_field = 'ceo_managed_departments'
-        elif obj and obj.role == 'top_management': 
-            m2m_field = 'top_managed_departments'
+        # GÜNCELLENDİ: CEO ve Top Management rollerine sahip kullanıcılar için 'department' alanı gizlenir.
+        if obj and obj.role in ['ceo', 'top_management']:
+            additional_fields = ('role', 'profile_photo', 'phone_number', 'position')
+        else:
+            # Diğer roller (employee, manager, department_lead, admin) için 'department' gösterilir.
+            additional_fields = ('role', 'department', 'profile_photo', 'phone_number', 'position')
             
-        if m2m_field:
-            additional_fields.append(m2m_field)
-            
-        fieldsets.append(
-            ('Əlavə Məlumatlar', {
-                'fields': tuple(additional_fields),
-                'description': 'Kullanıcının kurum içindeki rol ve görev bilgileri.'
-            })
-        )
-        
-        return tuple(fieldsets)
+        return fieldsets + (('Əlavə Məlumatlar', {'fields': additional_fields}),)
 
 
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'manager', 'department_lead', 'display_top_management', 'display_ceo')
-    list_filter = ('manager', 'department_lead') 
+    # GÜNCELLENDİ: 'ceo' alanı list_display'a eklendi.
+    list_display = ('id', 'name', 'ceo', 'manager', 'department_lead', 'display_top_management')
+    list_filter = ('manager', 'department_lead', 'ceo')  
     search_fields = ('name',)
     
-    filter_horizontal = ('top_management', 'ceo')
+    filter_horizontal = ('top_management',)
 
     def display_top_management(self, obj):
+        # top_management alanındaki kullanıcıların tam adlarını virgülle ayırarak gösterir
         return ", ".join([user.get_full_name() for user in obj.top_management.all()])
     display_top_management.short_description = 'Üst Rəhbərlik (Top Management)'
-
-    def display_ceo(self, obj):
-        return ", ".join([user.get_full_name() for user in obj.ceo.all()])
-    display_ceo.short_description = 'CEO'

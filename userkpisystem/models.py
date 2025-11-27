@@ -3,11 +3,15 @@ from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
 
 class UserEvaluation(models.Model):
+    class EvaluationType(models.TextChoices):
+        SUPERIOR_EVALUATION = 'SUPERIOR', 'Üst Rəhbər Dəyərləndirməsi'
+        TOP_MANAGEMENT_EVALUATION = 'TOP_MANAGEMENT', 'Yuxarı İdarəetmə Dəyərləndirməsi'
+
     evaluator = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="given_user_evaluations",
-        help_text="Dəyərləndirməni edən şəxs (rəhbər)"
+        help_text="Dəyərləndirməni edən şəxs"
     )
     evaluatee = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -16,6 +20,12 @@ class UserEvaluation(models.Model):
         help_text="Dəyərləndirilən işçi"
     )
     
+    evaluation_type = models.CharField(
+        max_length=20, 
+        choices=EvaluationType.choices, 
+        help_text="Dəyərləndirmənin növü (Üst Rəhbər və ya Top Management)"
+    )
+
     score = models.PositiveIntegerField(
         validators=[MinValueValidator(1), MaxValueValidator(10)],
         help_text="Aylıq performans skoru (1-10 arası)"
@@ -54,10 +64,10 @@ class UserEvaluation(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('evaluatee', 'evaluation_date')
+        unique_together = ('evaluatee', 'evaluation_date', 'evaluation_type') 
         ordering = ['-evaluation_date', 'evaluatee']
         verbose_name = "KPI Evaluation"
         verbose_name_plural = "KPI Evaluations"
-
+        
     def __str__(self):
-        return f"Evaluation for {self.evaluatee.get_full_name()} on {self.evaluation_date.strftime('%Y-%m')}"
+        return f"{self.get_evaluation_type_display()} for {self.evaluatee.get_full_name()} on {self.evaluation_date.strftime('%Y-%m')}"

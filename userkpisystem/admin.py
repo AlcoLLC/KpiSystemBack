@@ -3,18 +3,22 @@ from .models import UserEvaluation
 
 @admin.register(UserEvaluation)
 class UserEvaluationAdmin(admin.ModelAdmin):
+    # YENİLƏNDİ: 'evaluation_type' əlavə edildi
     list_display = (
         'evaluatee', 
         'get_evaluatee_department',
         'evaluator', 
+        'evaluation_type', # Yeni
         'score', 
         'evaluation_date',
         'created_at',
         'updated_at',
     )
     
+    # YENİLƏNDİ: 'evaluation_type' əlavə edildi
     list_filter = (
         'evaluation_date',
+        'evaluation_type', # Yeni
         'score',
         'evaluatee__department',
         'evaluator',
@@ -30,9 +34,10 @@ class UserEvaluationAdmin(admin.ModelAdmin):
         'comment',
     )
     
+    # YENİLƏNDİ: 'evaluation_type' əlavə edildi
     fieldsets = (
         ('Əsas Dəyərləndirmə Məlumatları', {
-            'fields': ('evaluator', 'evaluatee', 'score', 'comment', 'evaluation_date')
+            'fields': ('evaluator', 'evaluatee', 'evaluation_type', 'score', 'comment', 'evaluation_date')
         }),
         ('Dəyişiklik Tarixçəsi (Avtomatik)', {
             'fields': ('previous_score', 'updated_by', 'history'),

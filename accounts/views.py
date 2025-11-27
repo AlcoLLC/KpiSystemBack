@@ -77,22 +77,19 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         return self.request.user
     
 
-
 class FilterableDepartmentListView(APIView):
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         user = request.user
         queryset = Department.objects.none()  
 
-        if user.role == 'admin':
+        if user.role in ['admin', 'ceo']: # GÜNCELLENDİ: CEO ve Admin tüm departmanları görür
             queryset = Department.objects.all().order_by('name')
 
         elif user.role == 'top_management':
             queryset = user.top_managed_departments.all().order_by('name')
-
-        elif user.role == 'ceo': 
-            queryset = user.ceo_managed_departments.all().order_by('name')
 
         serializer = DepartmentSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -118,6 +115,9 @@ class AvailableDepartmentsForRoleView(APIView):
             queryset = Department.objects.filter(department_lead__isnull=True)
         elif role == 'manager':
             queryset = Department.objects.filter(manager__isnull=True)
+        elif role == 'ceo': # YENİ: CEO təyin edilməyən departamentlər
+             queryset = Department.objects.filter(ceo__isnull=True)
 
         serializer = DepartmentSerializer(queryset, many=True)
         return Response(serializer.data)
+    

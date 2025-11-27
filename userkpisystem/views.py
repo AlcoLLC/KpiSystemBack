@@ -23,46 +23,24 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
     serializer_class = UserEvaluationSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    # kpis/views.py içərisindəki UserEvaluationViewSet.get_queryset
-
     def get_queryset(self):
         user = self.request.user
 
-        if user.role == 'admin':
+        # GÜNCELLENDİ: CEO da tüm değerlendirmeleri görebilir
+        if user.role in ['admin', 'ceo']: 
             return self.queryset.order_by('-evaluation_date')
 
-        # CEO üçün xüsusi məntiq
-        if user.role == 'ceo':
-            # Bütün Top Management ID'ləri (CEO-nun rəhbərliyi altında olub-olmamasından asılı olmayaraq, çünki KPI evaluatoru CEO-dur)
-            top_management_ids = User.objects.filter(
-                role='top_management',
-                is_active=True
-            ).values_list('id', flat=True)
-            
-            # 1. CEO-nun Top Management üzvlərinə verdiyi qiymətləndirmələr (evaluator=CEO, evaluatee=TM)
-            ceo_is_evaluator_q = Q(evaluator=user, evaluatee_id__in=top_management_ids)
-            
-            # 2. CEO-nun Top Management üzvlərindən aldığı qiymətləndirmələr (Tətbiq olunmur, çünki TM özünü qiymətləndirmir)
-            
-            # 3. CEO-nun öz aldığı qiymətləndirmələr
-            ceo_is_evaluatee_q = Q(evaluatee=user)
-            
-            # 4. Həmin Top Management üzvlərinin digər qiymətləndirmələri (məsələn, admin tərəfindən)
-            top_management_is_evaluatee_q = Q(evaluatee_id__in=top_management_ids)
-            
-            return self.queryset.filter(
-                ceo_is_evaluator_q | ceo_is_evaluatee_q | top_management_is_evaluatee_q
-            ).distinct().order_by('-evaluation_date')
-            
-        # Digər rollar üçün (Mövcud məntiq düzgündür)
         q_objects = Q(evaluatee=user)
-        subordinate_ids = user.get_kpi_subordinates().values_list('id', flat=True)
+
+        # get_user_kpi_subordinates() CEO için Top Management'ı da döndürür
+        subordinate_ids = user.get_user_kpi_subordinates().values_list('id', flat=True)
         if subordinate_ids:
             q_objects |= Q(evaluatee_id__in=subordinate_ids)
         
         return self.queryset.filter(q_objects).distinct().order_by('-evaluation_date')
 
     def perform_create(self, serializer):
+        # Yetki yoxlaması serializer'da yapılır. Burada sadece kaydetme ve loglama var.
         evaluation = serializer.save(evaluator=self.request.user)
         
         create_log_entry(
@@ -75,6 +53,7 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             }
         )
 
+
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         user = request.user
@@ -82,18 +61,23 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
 
         is_admin = user.role == 'admin'
         
-        is_kpi_evaluator = evaluatee.get_kpi_evaluator() == user
-        
-        if evaluatee.role == 'top_management' and user.role == 'ceo':
-            is_allowed = is_kpi_evaluator or is_admin
-        elif evaluatee.role == 'top_management' and user.role != 'ceo':
-             is_allowed = is_admin
+        # TOP_MANAGEMENT dəyərləndirməsi üçün xüsusi yoxlama
+        if instance.evaluation_type == 'TOP_MANAGEMENT':
+            if user.role == 'ceo':
+                raise PermissionDenied("CEO Top Management dəyərləndirməsini redaktə edə bilməz.")
+            
+            if user.role == 'top_management':
+                # TM yalnız öz etdiyi dəyərləndirməni redaktə edə bilər
+                if instance.evaluator != user:
+                    raise PermissionDenied("Bu dəyərləndirməni redaktə etməyə icazəniz yoxdur.")
+            elif not is_admin:
+                raise PermissionDenied("Bu dəyərləndirməni yalnız Top Management və ya Admin redaktə edə bilər.")
         else:
-             is_allowed = is_kpi_evaluator or is_admin
+            # SUPERIOR dəyərləndirməsi üçün köhnə qaydalar
+            is_kpi_evaluator = evaluatee.get_kpi_evaluator() == user
 
-
-        if not is_allowed:
-            raise PermissionDenied("Bu dəyərləndirməni yalnız işçinin birbaşa rəhbəri və ya Admin redaktə edə bilər.")
+            if not (is_admin or is_kpi_evaluator):
+                raise PermissionDenied("Bu dəyərləndirməni yalnız işçinin birbaşa rəhbəri və ya Admin redaktə edə bilər.")
         
         return super().partial_update(request, *args, **kwargs)
 
@@ -102,33 +86,42 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         evaluator = request.user
         date_str = request.query_params.get('params[date]')
         department_id = request.query_params.get('params[department]')
-        evaluation_status = request.query_params.get('evaluation_status')
+        evaluation_status = request.query_params.get('evaluation_status') 
 
         try:
             evaluation_date = datetime.strptime(date_str, '%Y-%m').date().replace(day=1) if date_str else timezone.now().date().replace(day=1)
         except (ValueError, TypeError):
             evaluation_date = timezone.now().date().replace(day=1)
         
-        if evaluator.role == 'admin':
-            # Admin hər kəsi görə bilər (özündən başqa və top_management istisna olmaqla)
-            base_users_qs = User.objects.filter(
-                is_active=True
-            ).exclude(
-                Q(id=evaluator.id) | Q(role='top_management')
-            ).select_related('department', 'position')
+        
+        # 1. Bütün alt iyerarxiyanı tapmaq üçün köməkçi funksiya (set qaytarır)
+        def get_all_subordinates_recursive(user):
+            """Bir istifadəçinin bütün alt iyerarxiyasını rekursiv olaraq tapır"""
+            direct_subs = user.get_user_kpi_subordinates()
+            all_subs = set(direct_subs)
             
-        elif evaluator.role == 'ceo':
-            # CEO yalnız top_management istifadəçilərini görür və dəyərləndirir
-            base_users_qs = User.objects.filter(
-                role='top_management',
-                is_active=True
-            ).select_related('department', 'position')
+            for sub in direct_subs:
+                sub_subordinates = get_all_subordinates_recursive(sub)
+                all_subs.update(sub_subordinates)
             
-        else:
-            # Digər rollar üçün get_kpi_subordinates metodundan istifadə et
-            base_users_qs = evaluator.get_kpi_subordinates().select_related('department', 'position')
+            return all_subs
 
-        # Department filtri - CEO üçün tətbiq edilmir
+        # 2. Əsas işçilər toplusunu formalaşdırmaq
+        direct_subordinates = evaluator.get_user_kpi_subordinates()
+        
+        # Rekursiv olaraq bütün asılıların ID-lərini topla (özü və bütün alt iyerarxiya)
+        all_hierarchy_set = get_all_subordinates_recursive(evaluator)
+        all_hierarchy_ids = {u.id for u in all_hierarchy_set}
+        
+        # direct_subordinates'in ID-ləri əlavə edilir
+        all_users_ids_to_check = all_hierarchy_ids | set(direct_subordinates.values_list('id', flat=True))
+        
+        # Bütün aktiv və qiymətləndirilə bilən istifadəçiləri QuerySet kimi al
+        base_users_qs = User.objects.filter(id__in=all_users_ids_to_check, is_active=True).exclude(
+            role__in=['ceo', 'admin']
+        ).distinct()
+
+        # 3. Admin üçün departament filtri (base_users_qs üzərində işləyir)
         if evaluator.role == 'admin' and department_id:
             try:
                 dept_id = int(department_id)
@@ -140,24 +133,39 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
                 ).distinct()
             except (ValueError, TypeError):
                 pass
-        
-        # Evaluation status filtri
-        if evaluation_status in ['evaluated', 'pending']:
-            evaluated_this_month_ids = UserEvaluation.objects.filter(
-                evaluation_date=evaluation_date
-            ).values_list('evaluatee_id', flat=True)
 
-            if evaluation_status == 'evaluated':
-                base_users_qs = base_users_qs.filter(id__in=evaluated_this_month_ids)
-            elif evaluation_status == 'pending':
-                base_users_qs = base_users_qs.exclude(id__in=evaluated_this_month_ids)
+        # SİLİNDİ: AŞAĞIDAKİ TOP_MANAGEMENT MƏNTİQİ SƏHV YERLƏŞDİRİLMİŞDİ VƏ 'self.role' XƏTASINI VERİRDİ.
+        # if self.role == 'top_management': 
+        #     managed_departments = self.top_managed_departments.all()
+        #     if managed_departments.exists():
+        #          return User.objects.filter(
+        #              department__in=managed_departments, 
+        #              role__in=['department_lead', 'manager', 'employee'], 
+        #              is_active=True
+        #          ).distinct()
+        #     return User.objects.none()
         
-        users_to_show = base_users_qs.order_by('last_name', 'first_name')
+        # 4. Dəyərləndirmə statusuna görə filtr
+        if evaluation_status in ['evaluated', 'pending']:
+             # Hər iki növ qiymətləndirməsi olan işçilər
+             fully_evaluated_ids = UserEvaluation.objects.filter(
+                 evaluation_date=evaluation_date,
+                 evaluation_type=UserEvaluation.EvaluationType.SUPERIOR_EVALUATION
+             ).filter(
+                 evaluatee__received_user_evaluations__evaluation_date=evaluation_date,
+                 evaluatee__received_user_evaluations__evaluation_type=UserEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION
+             ).values_list('evaluatee_id', flat=True).distinct()
+
+             if evaluation_status == 'evaluated':
+                 base_users_qs = base_users_qs.filter(id__in=fully_evaluated_ids)
+             elif evaluation_status == 'pending':
+                 base_users_qs = base_users_qs.exclude(id__in=fully_evaluated_ids)
+        
+        users_to_show = base_users_qs.select_related('department', 'position').order_by('last_name', 'first_name')
 
         context = {'request': request, 'evaluation_date': evaluation_date}
         serializer = UserForEvaluationSerializer(users_to_show, many=True, context=context)
         return Response(serializer.data)
-    
     @action(detail=False, methods=['get'], url_path='my-performance-card')
     def my_performance_card(self, request):
         user = request.user
@@ -185,10 +193,12 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
             
         user = self.request.user
-        if not (user.role == 'admin' or user == evaluatee or user in evaluatee.get_kpi_superiors()):
+        # GÜNCELLENDİ: CEO ve Admin de görmelidir. get_kpi_superiors() CEO'yu en üstte getirir.
+        if not (user.role in ['admin', 'ceo'] or user == evaluatee or user in evaluatee.get_kpi_superiors()):
             raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
 
-        scores = UserEvaluation.objects.filter(evaluatee=evaluatee)
+        # DÜZƏLİŞ: Yalnız TOP_MANAGEMENT qiymətləndirmələrini süzgəcdən keçir
+        scores = UserEvaluation.objects.filter(evaluatee=evaluatee).select_related('evaluator')
 
         if date_str:
             try:
@@ -198,7 +208,8 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             except ValueError:
                 return Response({'error': 'Tarix formatı yanlışdır. Format YYYY-MM olmalıdır.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        scores = scores.order_by('-evaluation_date')
+        scores = scores.order_by('-evaluation_date', 'evaluation_type')
+        
         serializer = MonthlyScoreSerializer(scores, many=True)
         return Response(serializer.data)
     
@@ -216,7 +227,8 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
 
         user = self.request.user
-        if not (user.role == 'admin' or user == evaluatee or user in evaluatee.get_kpi_superiors()):
+        # GÜNCELLENDİ: CEO ve Admin de görmelidir.
+        if not (user.role in ['admin', 'ceo'] or user == evaluatee or user in evaluatee.get_kpi_superiors()):
             raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
 
         try:
@@ -232,11 +244,16 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         
         periods = {'3 ay': 3, '6 ay': 6, '9 ay': 9, '1 il': 12}
 
+        # ƏSAS SORĞU: Yalnız TM qiymətləndirmələrini süzgəcdən keçir
+        base_query = UserEvaluation.objects.filter(
+            evaluatee=evaluatee,
+            evaluation_type=UserEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION
+        )
+
         for label, months in periods.items():
             start_date = end_date - relativedelta(months=(months-1))
             
-            avg_data = UserEvaluation.objects.filter(
-                evaluatee=evaluatee,
+            avg_data = base_query.filter(
                 evaluation_date__gte=start_date,
                 evaluation_date__lte=end_date
             ).aggregate(

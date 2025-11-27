@@ -28,13 +28,7 @@ class UserSerializer(serializers.ModelSerializer):
     department = serializers.PrimaryKeyRelatedField(
         queryset=Department.objects.all(), required=False, allow_null=True
     )
-
     top_managed_departments = serializers.PrimaryKeyRelatedField(
-        queryset=Department.objects.all(), many=True, required=False 
-        
-    )
-
-    ceo_managed_departments = serializers.PrimaryKeyRelatedField( 
         queryset=Department.objects.all(), many=True, required=False
     )
 
@@ -43,8 +37,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             "id", "email", "role", "role_display", "all_departments", 
             'position', 'position_details', "department", "first_name", "last_name", 
-            "profile_photo", "phone_number", "password", "top_managed_departments",
-            "ceo_managed_departments",
+            "profile_photo", "phone_number", "password", "top_managed_departments"
         ]
         read_only_fields = ['role_display', 'all_departments', 'position_details']
 
@@ -65,13 +58,16 @@ class UserSerializer(serializers.ModelSerializer):
                 departments.add(obj.led_department.name)
         except Department.DoesNotExist:
             pass
+            
+        try:
+             # YENİ: CEO'nun bağlı olduğu departman (varsa)
+             if hasattr(obj, 'ceo_department') and obj.ceo_department: 
+                 departments.add(obj.ceo_department.name)
+        except Department.DoesNotExist:
+             pass
 
         if hasattr(obj, 'top_managed_departments'):
             for dept in obj.top_managed_departments.all(): 
-                departments.add(dept.name)
-
-        if hasattr(obj, 'ceo_managed_departments'):
-            for dept in obj.ceo_managed_departments.all(): 
                 departments.add(dept.name)
                 
         return list(departments)
@@ -92,7 +88,6 @@ class UserSerializer(serializers.ModelSerializer):
             validated_data['username'] = validated_data.get('email')
         
         top_departments = validated_data.pop('top_managed_departments', None)
-        ceo_departments = validated_data.pop('ceo_managed_departments', None)
         password = validated_data.pop('password', None)
         
         role = validated_data.get('role')
@@ -105,29 +100,38 @@ class UserSerializer(serializers.ModelSerializer):
                 Department.objects.filter(id=department.id).update(manager=user)
             elif role == 'department_lead':
                 Department.objects.filter(id=department.id).update(department_lead=user)
+            elif role == 'ceo': # YENİ: CEO təyin edilməsi
+                 Department.objects.filter(id=department.id).update(ceo=user)
+
 
         if top_departments is not None:
             user.top_managed_departments.set(top_departments)
-
-        if ceo_departments is not None:
-            user.ceo_managed_departments.set(ceo_departments)
         
         return user
 
     def update(self, instance, validated_data):
         top_departments = validated_data.pop('top_managed_departments', None)
-        ceo_departments = validated_data.pop('ceo_managed_departments', None)
         password = validated_data.pop('password', None)
         profile_photo = validated_data.get('profile_photo')
 
         new_role = validated_data.get('role', instance.role)
         new_department = validated_data.get('department', instance.department)
 
-        if 'role' in validated_data and instance.role == 'manager' and new_role != 'manager':
-            Department.objects.filter(manager=instance).update(manager=None)
+        # KÖHNƏ ROLUN TƏMİZLƏNMƏSİ
+        if 'role' in validated_data:
+            if instance.role == 'manager' and new_role != 'manager':
+                Department.objects.filter(manager=instance).update(manager=None)
 
-        if 'role' in validated_data and instance.role == 'department_lead' and new_role != 'department_lead':
-            Department.objects.filter(department_lead=instance).update(department_lead=None)
+            if instance.role == 'department_lead' and new_role != 'department_lead':
+                Department.objects.filter(department_lead=instance).update(department_lead=None)
+                
+            if instance.role == 'ceo' and new_role != 'ceo': # YENİ: KÖHNƏ CEO rolu təmizlənir
+                Department.objects.filter(ceo=instance).update(ceo=None)
+            
+            # Top Management rolundan çıxarsa, top_managed_departments silinir
+            if instance.role == 'top_management' and new_role != 'top_management':
+                 instance.top_managed_departments.clear()
+
         
         if profile_photo == '':
             instance.profile_photo.delete(save=False)
@@ -139,28 +143,37 @@ class UserSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         
         instance.save()
-
+        
+        # YENİ ROL/DEPARTAMENT TƏYİNİ
         if new_department:
             if new_role == 'manager':
+                # Başqa departamentdəki menecerliyini sil
                 Department.objects.filter(manager=instance).exclude(id=new_department.id).update(manager=None)
                 new_department.manager = instance
                 new_department.save()
             
             elif new_role == 'department_lead':
+                # Başqa departamentdəki leadliyini sil
                 Department.objects.filter(department_lead=instance).exclude(id=new_department.id).update(department_lead=None)
                 new_department.department_lead = instance
                 new_department.save()
-
+                
+            elif new_role == 'ceo': # YENİ: CEO təyin edilməsi
+                Department.objects.filter(ceo=instance).exclude(id=new_department.id).update(ceo=None)
+                new_department.ceo = instance
+                new_department.save()
+            
         if top_departments is not None:
             instance.top_managed_departments.set(top_departments)
-
-        if ceo_departments is not None:
-            instance.ceo_managed_departments.set(ceo_departments)
         
         return instance
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
+    # YENİ: CEO sahəsi əlavə edildi
+    ceo = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(role='ceo'), required=False, allow_null=True
+    )
     manager = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(role='manager'), required=False, allow_null=True
     )
@@ -171,22 +184,25 @@ class DepartmentSerializer(serializers.ModelSerializer):
         queryset=User.objects.filter(role='top_management'), many=True, required=False, allow_null=True
     )
 
-    ceo = serializers.PrimaryKeyRelatedField( 
-        queryset=User.objects.filter(role='ceo'), many=True, required=False, allow_null=True
-    )
-
     class Meta:
         model = Department
-        fields = ['id', 'name', 'manager', 'department_lead', 'top_management', 'ceo']
+        fields = ['id', 'name', 'ceo', 'manager', 'department_lead', 'top_management']
 
     def update(self, instance, validated_data):
         new_lead = validated_data.get('department_lead')
         if new_lead:
+            # Köhnə Lead'in digər departamentlərdən silinməsi
             Department.objects.filter(department_lead=new_lead).exclude(pk=instance.pk).update(department_lead=None)
         
         new_manager = validated_data.get('manager')
         if new_manager:
+            # Köhnə Manager'in digər departamentlərdən silinməsi
             Department.objects.filter(manager=new_manager).exclude(pk=instance.pk).update(manager=None)
+            
+        new_ceo = validated_data.get('ceo')
+        if new_ceo: # YENİ: CEO-nun digər departamentlərdən silinməsi
+            Department.objects.filter(ceo=new_ceo).exclude(pk=instance.pk).update(ceo=None)
+
 
         return super().update(instance, validated_data)
 
@@ -202,6 +218,7 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         password = attrs.get("password")
 
         try:
+            # İstək email ilə gəldiyi üçün username_field olaraq emaili istifadə edir
             user = User.objects.filter(email=email).first()
             if not user:
                 raise serializers.ValidationError("Bu email ilə istifadəçi tapılmadı.")
@@ -214,6 +231,7 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not user.is_active:
             raise serializers.ValidationError("İstifadəçi aktiv deyil.")
             
+        # login üçün username_field tələb olunur, istifadəçinin username'ini istifadə edir
         data = super().validate(attrs={self.username_field: user.get_username(), "password": password})
 
         request = self.context.get('request')
@@ -229,6 +247,8 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Email istifadə etmək üçün username_field'i silib email əlavə edir
         self.fields.pop(self.username_field, None)
         self.fields['email'] = serializers.EmailField()
         self.fields['password'] = serializers.CharField(write_only=True)
+        

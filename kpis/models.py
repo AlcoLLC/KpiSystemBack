@@ -6,6 +6,7 @@ class KPIEvaluation(models.Model):
     class EvaluationType(models.TextChoices):
         SELF_EVALUATION = 'SELF', 'Öz Değerlendirme'
         SUPERIOR_EVALUATION = 'SUPERIOR', 'Üst Değerlendirmesi'
+        TOP_MANAGEMENT_EVALUATION = 'TOP_MANAGEMENT', 'Yuxarı İdarəetmə Dəyərləndirməsi'
 
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="evaluations")
     evaluator = models.ForeignKey(
@@ -30,6 +31,11 @@ class KPIEvaluation(models.Model):
         blank=True,
         help_text="Dəyişiklik edildikdə əvvəlki skor"
     )
+    top_management_score = models.PositiveIntegerField(
+        null=True, 
+        blank=True,
+        help_text="Yuxarı İdarəetmənin verdiyi skor (1-100 arası)"
+    )
     
     final_score = models.PositiveIntegerField(
         null=True,
@@ -44,7 +50,7 @@ class KPIEvaluation(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     evaluation_type = models.CharField(
-        max_length=10,
+        max_length=20,
         choices=EvaluationType.choices,
         default=EvaluationType.SUPERIOR_EVALUATION,
     )
@@ -64,12 +70,23 @@ class KPIEvaluation(models.Model):
     )
 
     class Meta:
-        unique_together = ("task", "evaluator", "evaluatee", "evaluation_type")
+        unique_together = ("task", "evaluatee", "evaluation_type")
 
     def save(self, *args, **kwargs):
-        if self.evaluation_type == self.EvaluationType.SUPERIOR_EVALUATION and self.superior_score is not None:
-            self.final_score = self.superior_score
+        if self.evaluation_type == self.EvaluationType.TOP_MANAGEMENT_EVALUATION and self.top_management_score is not None:
+             self.final_score = self.top_management_score
+             
+        elif self.evaluation_type == self.EvaluationType.SUPERIOR_EVALUATION and self.superior_score is not None:
+             self.final_score = self.superior_score
+
         super().save(*args, **kwargs)
+
+        if self.evaluation_type == self.EvaluationType.TOP_MANAGEMENT_EVALUATION:
+            KPIEvaluation.objects.filter(
+                task=self.task,
+                evaluatee=self.evaluatee,
+                evaluation_type=self.EvaluationType.SUPERIOR_EVALUATION
+            ).update(final_score=None)
 
     def __str__(self):
         return f"KPI {self.task.title}: {self.evaluator} -> {self.evaluatee} - [{self.get_evaluation_type_display()}]"

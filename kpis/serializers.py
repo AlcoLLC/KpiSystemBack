@@ -20,7 +20,7 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'task_id', 'task', 'evaluator_id', 'evaluator', 
             'evaluatee_id', 'evaluatee', 'score', 'self_score', 
-            'superior_score', 'final_score', 'comment', 
+            'superior_score', 'top_management_score', 'final_score', 'comment', 
             'evaluation_type', 'created_at', 'updated_at',
             'updated_by', 'history', 'attachment'
         ]
@@ -100,9 +100,16 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
         validated_data['evaluatee'] = evaluatee
         
         evaluation_type = validated_data.get('evaluation_type')
+        
+        # YENİLƏNMƏ: Skoru doğru sahəyə yaz
         if evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION:
             validated_data['self_score'] = score
-        else:
+            
+        elif evaluation_type == KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION:
             validated_data['superior_score'] = score
-        
+            
+        elif evaluation_type == KPIEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION:
+            # TOP MANAGEMENT qiymətləndirməsi üçün yeni sahə istifadə olunur
+            validated_data['top_management_score'] = score
+            
         return super().create(validated_data)

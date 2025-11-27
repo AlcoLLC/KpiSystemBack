@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import KPIEvaluation
+from .models import KPIEvaluation 
 
 
 @admin.register(KPIEvaluation)
@@ -11,8 +11,10 @@ class KPIEvaluationAdmin(admin.ModelAdmin):
         "evaluation_type",
         "self_score",
         "superior_score",
+        "top_management_score", # YENİ: Listdə göstər
         "final_score",
         "created_at",
+        "updated_by",
     )
     list_filter = (
         "evaluation_type",
@@ -27,10 +29,13 @@ class KPIEvaluationAdmin(admin.ModelAdmin):
     )
     readonly_fields = (
         "final_score",
+        "previous_score",
+        "updated_by",
+        "history",
         "created_at",
         "updated_at",
     )
-    autocomplete_fields = ("task", "evaluator", "evaluatee")
+    autocomplete_fields = ("task", "evaluator", "evaluatee", "updated_by")
 
     fieldsets = (
         (None, {
@@ -44,15 +49,51 @@ class KPIEvaluationAdmin(admin.ModelAdmin):
         ("Scores", {
             "fields": (
                 "self_score",
-                "superior_score",
+                "superior_score",        # Üst Rəhbər (Manager/Lead) balı
+                "top_management_score",  # YENİ: Top Management balı
                 "final_score",
+                "previous_score",
             )
         }),
-        ("Additional Info", {
+        ("Dəyişiklik Tarixçəsi və Əlavə", {
             "fields": (
                 "comment",
+                "attachment",
+                "updated_by",
+                "history",
                 "created_at",
                 "updated_at",
             )
         }),
     )
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        
+        # Məntiq: Yalnız cari Evaluation Type-a uyğun skor sahəsini aktiv saxla, digərlərini deaktiv et.
+        
+        # Default olaraq bütün skor sahələrini deaktiv edək
+        form.base_fields['self_score'].widget.attrs['disabled'] = True
+        form.base_fields['superior_score'].widget.attrs['disabled'] = True
+        # top_management_score modeldə yoxdursa, bu hissə xəta verəcək, modeldə olduğunu fərz edirik
+        if 'top_management_score' in form.base_fields: 
+            form.base_fields['top_management_score'].widget.attrs['disabled'] = True
+
+        if obj:
+            if obj.evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION:
+                # SELF üçün yalnız self_score aktivdir, Superior və TM yox
+                form.base_fields['self_score'].widget.attrs.pop('disabled', None)
+                form.base_fields['self_score'].help_text = "İşçinin öz dəyərləndirməsidir (1-10 arası)."
+
+            elif obj.evaluation_type == KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION:
+                # SUPERIOR üçün yalnız superior_score aktivdir
+                form.base_fields['superior_score'].widget.attrs.pop('disabled', None)
+                form.base_fields['superior_score'].help_text = "Üst rəhbərin dəyərləndirməsidir (1-100 arası)."
+
+            elif obj.evaluation_type == KPIEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION:
+                # TOP MANAGEMENT üçün yalnız top_management_score aktivdir
+                if 'top_management_score' in form.base_fields:
+                    form.base_fields['top_management_score'].widget.attrs.pop('disabled', None)
+                    form.base_fields['top_management_score'].help_text = "Yuxarı İdarəetmənin dəyərləndirməsidir (1-100 arası)."
+
+        return form
