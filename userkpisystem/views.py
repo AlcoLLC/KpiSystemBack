@@ -26,13 +26,11 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        # GÜNCELLENDİ: CEO da tüm değerlendirmeleri görebilir
         if user.role in ['admin', 'ceo']: 
             return self.queryset.order_by('-evaluation_date')
 
         q_objects = Q(evaluatee=user)
 
-        # get_user_kpi_subordinates() CEO için Top Management'ı da döndürür
         subordinate_ids = user.get_user_kpi_subordinates().values_list('id', flat=True)
         if subordinate_ids:
             q_objects |= Q(evaluatee_id__in=subordinate_ids)
@@ -40,7 +38,6 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(q_objects).distinct().order_by('-evaluation_date')
 
     def perform_create(self, serializer):
-        # Yetki yoxlaması serializer'da yapılır. Burada sadece kaydetme ve loglama var.
         evaluation = serializer.save(evaluator=self.request.user)
         
         create_log_entry(
@@ -61,19 +58,16 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
 
         is_admin = user.role == 'admin'
         
-        # TOP_MANAGEMENT dəyərləndirməsi üçün xüsusi yoxlama
         if instance.evaluation_type == 'TOP_MANAGEMENT':
             if user.role == 'ceo':
                 raise PermissionDenied("CEO Top Management dəyərləndirməsini redaktə edə bilməz.")
             
             if user.role == 'top_management':
-                # TM yalnız öz etdiyi dəyərləndirməni redaktə edə bilər
                 if instance.evaluator != user:
                     raise PermissionDenied("Bu dəyərləndirməni redaktə etməyə icazəniz yoxdur.")
             elif not is_admin:
                 raise PermissionDenied("Bu dəyərləndirməni yalnız Top Management və ya Admin redaktə edə bilər.")
         else:
-            # SUPERIOR dəyərləndirməsi üçün köhnə qaydalar
             is_kpi_evaluator = evaluatee.get_kpi_evaluator() == user
 
             if not (is_admin or is_kpi_evaluator):
@@ -94,9 +88,7 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             evaluation_date = timezone.now().date().replace(day=1)
         
         
-        # 1. Bütün alt iyerarxiyanı tapmaq üçün köməkçi funksiya (set qaytarır)
         def get_all_subordinates_recursive(user):
-            """Bir istifadəçinin bütün alt iyerarxiyasını rekursiv olaraq tapır"""
             direct_subs = user.get_user_kpi_subordinates()
             all_subs = set(direct_subs)
             
@@ -106,22 +98,17 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             
             return all_subs
 
-        # 2. Əsas işçilər toplusunu formalaşdırmaq
         direct_subordinates = evaluator.get_user_kpi_subordinates()
         
-        # Rekursiv olaraq bütün asılıların ID-lərini topla (özü və bütün alt iyerarxiya)
         all_hierarchy_set = get_all_subordinates_recursive(evaluator)
         all_hierarchy_ids = {u.id for u in all_hierarchy_set}
         
-        # direct_subordinates'in ID-ləri əlavə edilir
         all_users_ids_to_check = all_hierarchy_ids | set(direct_subordinates.values_list('id', flat=True))
         
-        # Bütün aktiv və qiymətləndirilə bilən istifadəçiləri QuerySet kimi al
         base_users_qs = User.objects.filter(id__in=all_users_ids_to_check, is_active=True).exclude(
             role__in=['ceo', 'admin']
         ).distinct()
 
-        # 3. Admin üçün departament filtri (base_users_qs üzərində işləyir)
         if evaluator.role == 'admin' and department_id:
             try:
                 dept_id = int(department_id)
@@ -134,20 +121,7 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError):
                 pass
 
-        # SİLİNDİ: AŞAĞIDAKİ TOP_MANAGEMENT MƏNTİQİ SƏHV YERLƏŞDİRİLMİŞDİ VƏ 'self.role' XƏTASINI VERİRDİ.
-        # if self.role == 'top_management': 
-        #     managed_departments = self.top_managed_departments.all()
-        #     if managed_departments.exists():
-        #          return User.objects.filter(
-        #              department__in=managed_departments, 
-        #              role__in=['department_lead', 'manager', 'employee'], 
-        #              is_active=True
-        #          ).distinct()
-        #     return User.objects.none()
-        
-        # 4. Dəyərləndirmə statusuna görə filtr
         if evaluation_status in ['evaluated', 'pending']:
-             # Hər iki növ qiymətləndirməsi olan işçilər
              fully_evaluated_ids = UserEvaluation.objects.filter(
                  evaluation_date=evaluation_date,
                  evaluation_type=UserEvaluation.EvaluationType.SUPERIOR_EVALUATION
@@ -193,11 +167,9 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
             
         user = self.request.user
-        # GÜNCELLENDİ: CEO ve Admin de görmelidir. get_kpi_superiors() CEO'yu en üstte getirir.
         if not (user.role in ['admin', 'ceo'] or user == evaluatee or user in evaluatee.get_kpi_superiors()):
             raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
 
-        # DÜZƏLİŞ: Yalnız TOP_MANAGEMENT qiymətləndirmələrini süzgəcdən keçir
         scores = UserEvaluation.objects.filter(evaluatee=evaluatee).select_related('evaluator')
 
         if date_str:
@@ -227,7 +199,6 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
 
         user = self.request.user
-        # GÜNCELLENDİ: CEO ve Admin de görmelidir.
         if not (user.role in ['admin', 'ceo'] or user == evaluatee or user in evaluatee.get_kpi_superiors()):
             raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
 
@@ -244,7 +215,6 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         
         periods = {'3 ay': 3, '6 ay': 6, '9 ay': 9, '1 il': 12}
 
-        # ƏSAS SORĞU: Yalnız TM qiymətləndirmələrini süzgəcdən keçir
         base_query = UserEvaluation.objects.filter(
             evaluatee=evaluatee,
             evaluation_type=UserEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION

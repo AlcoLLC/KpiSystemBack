@@ -62,7 +62,7 @@ class Position(models.Model):
 class User(AbstractUser):
     ROLE_CHOICES = [
         ("admin", "Admin"),
-        ("ceo", "CEO"), # YENİ ROL
+        ("ceo", "CEO"),
         ("top_management", "Yuxarı İdarəetmə"),
         ("department_lead", "Departament Rəhbəri"),
         ("manager", "Menecer"),
@@ -178,7 +178,6 @@ class User(AbstractUser):
             
         if self.role == "manager":
             try:
-                # Manager, öz departamentindəki Employee'ləri ataya bilir
                 managed_dept = self.managed_department
                 return User.objects.filter(
                     department=managed_dept,
@@ -191,36 +190,26 @@ class User(AbstractUser):
         return User.objects.none()
 
     def get_direct_superior(self):
-        if self.role in ["ceo", "admin"]: # YENİ: CEO və Admin'in birbaşa üstü yoxdur
+        if self.role in ["ceo", "admin"]:
             return None
 
         if self.department:
             if self.role == "employee":
-                # İşçinin birbaşa üstü: Manager (əsas)
                 manager = self.department.manager
                 if manager and manager.is_active:
                     return manager
             
-            # İşçi və ya Manager'ın bir sonraki üstü: Department Lead (yalnız Manager yoxdursa)
             if self.role in ["employee", "manager"]:
                 lead = self.department.department_lead
                 if lead and lead.is_active:
                     return lead
         
-        # Əgər yuxarıdakı yoxlamalar üst rol tapmazsa (Manager/Lead yoxdursa)
-        # və ya cari rol Department Lead isə
         if self.role == "department_lead":
-             # D-Lead'in üstü: Top Management (Departamentinə atanmış olan)
              if self.department and self.department.top_management.exists():
                  return self.department.top_management.filter(is_active=True).first()
              
-             # Əgər departamentə Top Management atanmayıbsa və ya CEO yoxlaması
-             # Bu hissə Top Management-ə keçir, o da CEO-nu qaytarır (aşağıda)
 
         if self.role in ["employee", "manager", "department_lead", "top_management"]:
-             # Hiyerarxiyada boşluq varsa və ya Top Management-in özü üçün
-             
-             # 1. Hiyerarxik zincir: Top Management -> CEO
              if self.role == "top_management":
                  ceo = User.objects.filter(role="ceo", is_active=True).first()
                  if ceo:
@@ -230,7 +219,6 @@ class User(AbstractUser):
                 if self.department and self.department.top_management.exists():
                      return self.department.top_management.filter(is_active=True).first()
                 
-                # Növbəti mərhələ: CEO
                 ceo = User.objects.filter(role="ceo", is_active=True).first()
                 if ceo:
                     return ceo
@@ -241,13 +229,12 @@ class User(AbstractUser):
         if self.role == 'admin':
             return User.objects.filter(is_active=True).exclude(pk=self.pk).order_by('first_name', 'last_name')
         
-        if self.role == 'ceo': # YENİ ROL: CEO'nun astları (Admin hariç tüm aktif kullanıcılar, Top Management dahil)
+        if self.role == 'ceo': 
             return User.objects.filter(is_active=True).exclude(
                 Q(pk=self.pk) | Q(role='admin')
             ).order_by('first_name', 'last_name')
 
         if self.role == 'top_management':
-            # Top Management'ın astları: Kendi departmanlarındaki D-Lead, Manager ve Employee'ler
             managed_departments = self.top_managed_departments.all()
             if managed_departments.exists():
                 return User.objects.filter(
@@ -257,7 +244,6 @@ class User(AbstractUser):
                 ).exclude(pk=self.pk).order_by('first_name', 'last_name')
         
         if self.role == 'department_lead':
-            # Department Lead'in astları: Kendi departmanındaki Manager ve Employee'ler
             try:
                 led_dept = self.led_department 
                 return User.objects.filter(
@@ -269,7 +255,6 @@ class User(AbstractUser):
                 return User.objects.none()
 
         if self.role == 'manager':
-            # Manager'ın astları: Kendi departmanındaki Employee'ler
             try:
                 managed_dept = self.managed_department
                 return User.objects.filter(
@@ -284,7 +269,6 @@ class User(AbstractUser):
     
 
     def get_all_superiors(self):
-        # ... (Eynidir, çünki get_direct_superior'ı istifadə edir) ...
         superiors = []
         current_superior = self.get_direct_superior()
         limit = 10 
@@ -299,7 +283,6 @@ class User(AbstractUser):
     
 
     def get_kpi_superiors(self):
-        # ... (Eynidir, çünki get_kpi_evaluator'ı istifadə edir) ...
         superiors = []
         current_superior = self.get_kpi_evaluator()
         limit = 5 
@@ -316,19 +299,17 @@ class User(AbstractUser):
 
     def get_kpi_subordinates(self):
         if self.role == 'admin':
-            # Admin, admin və ceo hariç tüm aktif kullanıcıları değerlendirebilir
             return User.objects.filter(is_active=True).exclude(
                 Q(id=self.id) | Q(role__in=['admin', 'ceo'])
             )
 
-        if self.role == 'ceo': # YENİ ROL: CEO, Top Management'ı qiymətləndirir
+        if self.role == 'ceo':
              return User.objects.filter(role='top_management', is_active=True)
 
         if not self.department:
             return User.objects.none()
 
         if self.role == 'top_management':
-            # Top Management, kendi departmanlarındaki Department Lead'leri qiymətləndirir
             managed_departments = self.top_managed_departments.all()
             if managed_departments.exists():
                 return User.objects.filter(
@@ -339,14 +320,12 @@ class User(AbstractUser):
         
         elif self.role == 'department_lead':
              try:
-                # Department Lead, kendi departmanındaki Manager ve Employee'leri qiymətləndirir
                 led_dept = self.led_department
                 return User.objects.filter(department=led_dept, role__in=['manager', 'employee'], is_active=True)
              except Department.DoesNotExist:
                 return User.objects.none()
         elif self.role == 'manager':
             try:
-                # Manager, kendi departmanındaki Employee'leri qiymətləndirir
                 managed_dept = self.managed_department
                 return User.objects.filter(department=managed_dept, role='employee', is_active=True)
             except Department.DoesNotExist:
@@ -357,32 +336,25 @@ class User(AbstractUser):
 
     def get_user_kpi_subordinates(self):
         if self.role == 'admin':
-             # Admin, admin və ceo hariç tüm aktiv kullanıcıları değerlendirebilir
              return User.objects.filter(is_active=True).exclude(
                  Q(id=self.id) | Q(role__in=['admin', 'ceo'])
              )
 
         if self.role == 'ceo': 
-             # CEO yalnız hiyerarxiyada boşluq olan işçiləri görür
-             # (Top Management-i həmişə görür + boşluqdakı D-Lead, Manager, Employee)
              ceo_subordinates = User.objects.filter(is_active=True).exclude(
                  Q(pk=self.pk) | Q(role__in=['admin', 'ceo'])
              )
              
-             # Top Management-i əlavə et
              result_ids = set(ceo_subordinates.filter(role='top_management').values_list('id', flat=True))
              
-             # Department Lead-lər: TM-si olmayanları əlavə et
              for lead in ceo_subordinates.filter(role='department_lead'):
                  if lead.department and not lead.department.top_management.exists():
                      result_ids.add(lead.id)
              
-             # Manager-lər: Department Lead-i olmayanları əlavə et
              for manager in ceo_subordinates.filter(role='manager'):
                  if manager.department and not manager.department.department_lead:
                      result_ids.add(manager.id)
              
-             # Employee-lər: Manager və Department Lead-i olmayanları əlavə et
              for employee in ceo_subordinates.filter(role='employee'):
                  if employee.department:
                      if not employee.department.manager and not employee.department.department_lead:
@@ -391,11 +363,8 @@ class User(AbstractUser):
              return User.objects.filter(id__in=result_ids).order_by('first_name', 'last_name')
 
         if self.role == 'top_management':
-            # Top Management yalnız öz departamentlərindəki işçiləri görür
             managed_departments = self.top_managed_departments.all()
             if managed_departments.exists():
-                # SUPERIOR üçün: Department Lead
-                # TM üçün: Employee və Manager
                 return User.objects.filter(
                     department__in=managed_departments,
                     role__in=['department_lead', 'manager', 'employee'],
@@ -428,96 +397,134 @@ class User(AbstractUser):
         return User.objects.none()
     
     def get_kpi_evaluator_by_type(self, evaluation_type):
-        """
-        Qiymətləndirmə növünə görə uyğun qiymətləndiricini qaytarır.
-        - SUPERIOR: Hiyerarxiyada birbaşa üst rəhbər
-        - TOP_MANAGEMENT: Yalnız Employee və Manager üçün TM tərəfindən ikinci qiymətləndirmə
-        """
         if self.role in ["admin", "ceo"] or not self.department:
             return None
+        
+        def find_next_available_superior(user):
+            if user.role == 'employee':
+                if user.department.manager and user.department.manager.is_active:
+                    return user.department.manager
+                if user.department.department_lead and user.department.department_lead.is_active:
+                    return user.department.department_lead
+                if user.department.top_management.exists():
+                    return user.department.top_management.filter(is_active=True).first()
+                return User.objects.filter(role='ceo', is_active=True).first()
             
-        # SUPERIOR qiymətləndirməsi: Hiyerarxiyada birbaşa üst
+            elif user.role == 'manager':
+                if user.department.department_lead and user.department.department_lead.is_active:
+                    return user.department.department_lead
+                if user.department.top_management.exists():
+                    return user.department.top_management.filter(is_active=True).first()
+                return User.objects.filter(role='ceo', is_active=True).first()
+            
+            elif user.role == 'department_lead':
+                if user.department.top_management.exists():
+                    return user.department.top_management.filter(is_active=True).first()
+                return User.objects.filter(role='ceo', is_active=True).first()
+            
+            elif user.role == 'top_management':
+                return User.objects.filter(role='ceo', is_active=True).first()
+            
+            return None
+
         if evaluation_type == 'SUPERIOR':
-            if self.role == 'employee':
-                # Employee -> Manager (əsas) və ya Department Lead
-                manager = self.department.manager
-                if manager and manager.is_active:
-                    return manager
-                # Manager yoxdursa, Department Lead
-                lead = self.department.department_lead
-                if lead and lead.is_active:
-                    return lead
-            
-            elif self.role == 'manager':
-                # Manager -> Department Lead
-                lead = self.department.department_lead
-                if lead and lead.is_active:
-                    return lead
-            
-            elif self.role == 'department_lead':
-                # Department Lead -> Top Management
-                if self.department.top_management.exists():
-                    return self.department.top_management.filter(is_active=True).first()
-                # TM yoxdursa, CEO
-                return User.objects.filter(role='ceo', is_active=True).first()
-            
-            elif self.role == 'top_management': 
-                # Top Management -> CEO (SUPERIOR)
-                return User.objects.filter(role='ceo', is_active=True).first()
-            
-            # ÖNƏMLİ: Əgər yuxarıdakı şərtlər üst tapmadısa
-            # (məsələn Manager var ama Department Lead yoxdur)
-            # o zaman növbəti səviyyəyə keçirik
-            if self.role in ['employee', 'manager']:
-                # TM yoxlayırıq
-                if self.department.top_management.exists():
-                    return self.department.top_management.filter(is_active=True).first()
-                # TM da yoxdursa, CEO
-                return User.objects.filter(role='ceo', is_active=True).first()
-                
-        # TOP_MANAGEMENT qiymətləndirməsi: Yalnız Employee və Manager üçün
+            superior = find_next_available_superior(self)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[get_kpi_evaluator_by_type] {self.get_full_name()} ({self.role}) -> SUPERIOR: {superior.get_full_name() if superior else 'None'} ({superior.role if superior else 'N/A'})")
+            return superior
+        
         elif evaluation_type == 'TOP_MANAGEMENT':
-            if self.role in ['employee', 'manager']:
-                # Employee və Manager üçün ikinci dəyərləndirmə TM tərəfindən
-                if self.department and self.department.top_management.exists():
-                    return self.department.top_management.filter(is_active=True).first()
+            if self.role not in ['employee', 'manager']:
+                return None
             
-            # Digər bütün rollar (department_lead, top_management, ceo, admin) üçün 
-            # TOP_MANAGEMENT qiymətləndirməsi YOXDUR
+            superior = find_next_available_superior(self)
+            
+            if superior and superior.role in ['manager', 'department_lead']:
+                if self.department and self.department.top_management.exists():
+                    tm = self.department.top_management.filter(is_active=True).first()
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"[get_kpi_evaluator_by_type] {self.get_full_name()} ({self.role}) -> TOP_MANAGEMENT: {tm.get_full_name() if tm else 'None'} (SUPERIOR is {superior.role})")
+                    return tm
+            
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[get_kpi_evaluator_by_type] {self.get_full_name()} ({self.role}) -> TOP_MANAGEMENT: None (SUPERIOR is {superior.role if superior else 'N/A'})")
             return None
 
         return None
-    
+
     def get_kpi_evaluator(self):
-        # Bu metod hiyerarxiyada bir üst qiymətləndiricini qaytarır
-        # (Ənənəvi iyerarxiyaya əsaslanaraq, TOP_MANAGEMENT qiymətləndirməsinin icazəsi başqa yerdə yoxlanılacaq)
         if self.role in ["admin", "ceo"]:
             return None
         
-        # 1. Employee: Manager -> Lead -> Top Management -> CEO
         if self.role == 'employee':
             if self.department and self.department.manager:
                 return self.department.manager
-            # Manager yoxdursa, Department Lead
             if self.department and self.department.department_lead:
                 return self.department.department_lead
         
-        # 2. Manager: Department Lead -> Top Management -> CEO
         elif self.role == 'manager':
             if self.department and self.department.department_lead:
                 return self.department.department_lead
 
-        # 3. Department Lead: Top Management -> CEO
         elif self.role == 'department_lead':
             if self.department and self.department.top_management.exists():
                 return self.department.top_management.filter(is_active=True).first()
         
-        # 4. Top Management: CEO
         elif self.role == 'top_management':
             return User.objects.filter(role='ceo', is_active=True).first()
 
-        # Boşluq doldurucusu (Ən yüksək mümkün rəhbər)
         if self.department and self.department.top_management.exists():
              return self.department.top_management.filter(is_active=True).first()
              
         return User.objects.filter(role='ceo', is_active=True).first()
+    
+    def needs_dual_evaluation(self):
+        if self.role not in ['employee', 'manager']:
+            return False
+        
+        if not self.department:
+            return False
+        
+        superior = self.get_kpi_evaluator_by_type('SUPERIOR')
+        if not superior:
+            return False
+        
+        if superior.role in ['manager', 'department_lead']:
+            has_tm = self.department.top_management.exists()
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[needs_dual_evaluation] {self.get_full_name()} ({self.role}) -> {has_tm} (SUPERIOR: {superior.role}, TM exists: {has_tm})")
+            return has_tm
+        
+        return False
+
+    def get_evaluation_config(self):
+        if self.role in ['admin', 'ceo']:
+            return {
+                'requires_self': False,
+                'superior_evaluator': None,
+                'superior_evaluator_name': None,
+                'tm_evaluator': None,
+                'tm_evaluator_name': None,
+                'is_dual_evaluation': False
+            }
+        
+        superior = self.get_kpi_evaluator_by_type('SUPERIOR')
+        tm_evaluator = self.get_kpi_evaluator_by_type('TOP_MANAGEMENT')
+        is_dual = self.needs_dual_evaluation()
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[get_evaluation_config] {self.get_full_name()} ({self.role}) -> Superior: {superior.get_full_name() if superior else 'None'}, TM: {tm_evaluator.get_full_name() if tm_evaluator else 'None'}, Dual: {is_dual}")
+        
+        return {
+            'requires_self': True,
+            'superior_evaluator': superior,
+            'superior_evaluator_name': superior.get_full_name() if superior else None,
+            'tm_evaluator': tm_evaluator,
+            'tm_evaluator_name': tm_evaluator.get_full_name() if tm_evaluator else None,
+            'is_dual_evaluation': is_dual
+        }

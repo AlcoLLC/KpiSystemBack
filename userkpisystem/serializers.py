@@ -8,7 +8,6 @@ from rest_framework.exceptions import PermissionDenied
 class UserEvaluationSerializer(serializers.ModelSerializer):
     evaluatee_id = serializers.IntegerField(write_only=True)
     
-    # StringRelatedField yerine get_user_details metodu kullanılacak
     evaluator = serializers.SerializerMethodField()
     evaluatee = serializers.SerializerMethodField()
     updated_by = serializers.SerializerMethodField()
@@ -39,7 +38,6 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
             }
         return None
     
-    # GÜNCELLENDİ: StringRelatedField'ler SeriliazerMethodField ile değiştirildi
     def get_evaluator(self, obj):
         return self.get_user_details(obj.evaluator)
 
@@ -54,7 +52,6 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
     def validate_evaluation_date(self, value):
         return value.replace(day=1)
 
-    # ... (UserEvaluationSerializer sinfində)
 
     def validate(self, data):
         request = self.context.get('request')
@@ -65,8 +62,7 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         except User.DoesNotExist:
             raise serializers.ValidationError({'evaluatee_id': 'Belə bir istifadəçi tapılmadı.'})
         
-        # YENİ/GÜNCELLENDİ: Top Management yalnızca CEO veya Admin tarafından değerlendirilebilir
-        is_admin_or_ceo = evaluator.role in ['ceo', 'admin']
+        is_admin = evaluator.role == 'admin'
         
         if evaluatee.role == 'ceo':
             raise serializers.ValidationError("CEO dəyərləndirilə bilməz.")
@@ -76,41 +72,45 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         
         evaluation_type = data['evaluation_type']
         
-        # --- YENİ MƏNTİQ: TM DƏYƏRLƏNDİRMƏSİNDƏN ƏVVƏL SUPERIOR YOXLANILMASI ---
-        if evaluation_type == UserEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION:
-            if evaluatee.role in ['employee', 'manager']: # Yalnız bu rollar üçün TM qiymətləndirməsi tətbiq olunur
+        eval_config = evaluatee.get_evaluation_config()
+        
+        if not is_admin:
+            if eval_config['superior_evaluator'] and eval_config['superior_evaluator'].id == evaluator.id:
+                if evaluation_type != UserEvaluation.EvaluationType.SUPERIOR_EVALUATION:
+                    raise serializers.ValidationError(
+                        'Siz bu işçinin SUPERIOR qiymətləndiricisisiniz. SUPERIOR dəyərləndirməsi etməlisiniz.'
+                    )
+            
+            elif eval_config['is_dual_evaluation'] and eval_config['tm_evaluator'] and eval_config['tm_evaluator'].id == evaluator.id:
+                if evaluation_type != UserEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION:
+                    raise serializers.ValidationError(
+                        'Siz bu işçinin Top Management qiymətləndiricisisiniz. TOP_MANAGEMENT dəyərləndirməsi etməlisiniz.'
+                    )
+                
+                evaluation_date = data['evaluation_date'].replace(day=1)
                 superior_eval_exists = UserEvaluation.objects.filter(
                     evaluatee=evaluatee,
-                    evaluation_date=data['evaluation_date'].replace(day=1),
-                    # Düzgün müraciət: Dəyərin string adı
+                    evaluation_date=evaluation_date,
                     evaluation_type=UserEvaluation.EvaluationType.SUPERIOR_EVALUATION 
                 ).exists()
 
-                # Yeniləmə əməliyyatında cari dəyərləndirməni nəzərə alırıq
                 if self.instance and self.instance.evaluation_type == UserEvaluation.EvaluationType.SUPERIOR_EVALUATION:
-                     superior_eval_exists = True # Əgər SUPERIOR qiymətləndirməsi yenilənirsə, onun mövcudluğu təsdiqlənir
+                    superior_eval_exists = True
 
                 if not superior_eval_exists:
                     raise serializers.ValidationError(
-                        {'evaluation_type': "Top Management dəyərləndirməsi yalnız Üst Rəhbər dəyərləndirməsi tamamlandıqdan sonra edilə bilər."}
+                        {'evaluation_type': "Top Management dəyərləndirməsi yalnız SUPERIOR dəyərləndirməsi tamamlandıqdan sonra edilə bilər."}
                     )
-        # ---------------------------------------------------------------------
-
-        required_evaluator = evaluatee.get_kpi_evaluator_by_type(evaluation_type) # Yeni metod istifadə edilir
-        
-        # ... (icazə yoxlaması eyni qalır)
-        if not is_admin_or_ceo:
-            # ... (required_evaluator yoxlaması)
-            if required_evaluator != evaluator:
+            else:
                 raise serializers.ValidationError(
-                    f"Yalnız işçinin {evaluation_type} iyerarxiyasındakı rəhbəri və ya Admin/CEO dəyərləndirmə edə bilər."
+                    'Bu işçini qiymətləndirməyə icazəniz yoxdur.'
                 )
             
         evaluation_date = data['evaluation_date'].replace(day=1)
         qs = UserEvaluation.objects.filter(
             evaluatee=evaluatee,
             evaluation_date=evaluation_date,
-            evaluation_type=evaluation_type # Yeni: evaluation_type əsasında unikal yoxlama
+            evaluation_type=evaluation_type
         )
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
@@ -129,10 +129,8 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
         new_score = validated_data.get('score')
         old_score = instance.score
         
-        # Redaktə icazəsi yoxlaması
         is_admin = user.role == 'admin'
         
-        # TOP_MANAGEMENT dəyərləndirməsini yalnız TM və Admin redaktə edə bilər
         if instance.evaluation_type == 'TOP_MANAGEMENT':
             if user.role == 'ceo':
                 raise PermissionDenied("CEO Top Management dəyərləndirməsini redaktə edə bilməz.")
@@ -140,11 +138,9 @@ class UserEvaluationSerializer(serializers.ModelSerializer):
             if user.role not in ['top_management', 'admin']:
                 raise PermissionDenied("Bu dəyərləndirməni yalnız Top Management və ya Admin redaktə edə bilər.")
             
-            # TM özü redaktə edirsə, evaluator olmalıdır
             if user.role == 'top_management' and instance.evaluator != user:
                 raise PermissionDenied("Bu dəyərləndirməni redaktə etməyə icazəniz yoxdur.")
         else:
-            # SUPERIOR dəyərləndirməsi üçün köhnə qaydalar
             is_evaluator = instance.evaluator == user
             
             if not (is_admin or is_evaluator):
@@ -178,13 +174,15 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
     can_evaluate_superior = serializers.SerializerMethodField()
     can_evaluate_top_management = serializers.SerializerMethodField()
     position_name = serializers.CharField(source='position.name', read_only=True, default=None)
+    evaluation_config = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'first_name', 'last_name', 'profile_photo',
             'department_name', 'role_display', 'position_name',
-            'selected_month_evaluations', 'can_evaluate_superior', 'can_evaluate_top_management'
+            'selected_month_evaluations', 'can_evaluate_superior', 'can_evaluate_top_management',
+            'evaluation_config'
         ]
 
     def get_selected_month_evaluations(self, obj):
@@ -219,44 +217,21 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
         
         evaluator = request.user
         
-        # Admin icazəsi
         if evaluator.role == 'admin': 
             return True
         
-        # CEO yalnız boşluqdakı işçiləri dəyərləndirə bilər
-        if evaluator.role == 'ceo':
-            # Üstü olub-olmadığını yoxla
-            has_other_superior = False
-            
-            if obj.role == 'employee':
-                if obj.department and (obj.department.manager or obj.department.department_lead):
-                    has_other_superior = True
-            elif obj.role == 'manager':
-                if obj.department and obj.department.department_lead:
-                    has_other_superior = True
-            elif obj.role == 'department_lead':
-                if obj.department and obj.department.top_management.exists():
-                    has_other_superior = True
-            
-            return not has_other_superior
+        superior_evaluator = obj.get_kpi_evaluator_by_type('SUPERIOR')
         
-        # Top Management yalnız öz departamentindəki Department Lead-ləri dəyərləndirə bilər
-        if evaluator.role == 'top_management':
-            managed_departments = evaluator.top_managed_departments.all()
-            if not managed_departments.exists():
-                return False
-            if obj.department not in managed_departments:
-                return False
-            # Yalnız Department Lead
-            if obj.role != 'department_lead':
-                return False
-            return True
+        result = superior_evaluator == evaluator
         
-        # Digər rəhbərlər üçün standart yoxlama
-        return obj.get_kpi_evaluator_by_type('SUPERIOR') == evaluator
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[can_evaluate_superior] Evaluator: {evaluator.get_full_name()} ({evaluator.role}) -> Evaluatee: {obj.get_full_name()} ({obj.role}) -> Superior: {superior_evaluator.get_full_name() if superior_evaluator else 'None'} -> Can Evaluate: {result}")
+        
+        return result
     
     def get_can_evaluate(self, obj):
-        if obj.role in ['ceo', 'admin']: # GÜNCELLENDİ: CEO ve Admin de değerlendirilemez
+        if obj.role in ['ceo', 'admin']:
             return False
         
         request = self.context.get('request')
@@ -269,24 +244,19 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
         if evaluator.role == 'admin':
             if obj.id == evaluator.id:
                  return False
-            # Admin, Top Management hariç herkesi değerlendirebilir (CEO'yu da hariç tutalım)
             if obj.role in ['ceo', 'admin']:
                  return False
             return True
         
-        # YENİ: CEO, Top Management'ı değerlendirebilir
         if evaluator.role == 'ceo':
              if obj.role == 'top_management':
                   return True
-             # CEO, hiyerarşide boşlukta kalan herhangi birini de değerlendirebilir
              return obj.get_kpi_evaluator() == evaluator
         
-        # Diğer roller için standart KPI değerlendirici kuralı
         return obj.get_kpi_evaluator() == evaluator
 
 
     def get_can_evaluate_top_management(self, obj):
-        # ƏSAS DƏYİŞİKLİK: Top Management dəyərləndirməsi yalnız Employee və Manager üçün
         if obj.role not in ['employee', 'manager']:
             return False
             
@@ -299,22 +269,31 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
         
         evaluator = request.user
         
-        # Admin icazəsi
         if evaluator.role == 'admin':
             return True
         
-        # YALNIZ Top Management TM dəyərləndirməsi edə bilər
-        if evaluator.role == 'top_management':
-            # TM yalnız öz departamentindəki Employee və Manager-ləri dəyərləndirə bilər
-            managed_departments = evaluator.top_managed_departments.all()
-            if not managed_departments.exists():
-                return False
-            if obj.department not in managed_departments:
-                return False
-            return True
+        tm_evaluator = obj.get_kpi_evaluator_by_type('TOP_MANAGEMENT')
         
-        # CEO və digər rollar TM dəyərləndirməsi edə bilməz
-        return False
+        result = tm_evaluator == evaluator
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[can_evaluate_top_management] Evaluator: {evaluator.get_full_name()} ({evaluator.role}) -> Evaluatee: {obj.get_full_name()} ({obj.role}) -> TM: {tm_evaluator.get_full_name() if tm_evaluator else 'None'} -> Can Evaluate: {result}")
+        
+        return result
+    
+    def get_evaluation_config(self, obj):
+        config = obj.get_evaluation_config()
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[Serializer - get_evaluation_config] {obj.get_full_name()} -> Config: {config}")
+        
+        return {
+            'is_dual_evaluation': config['is_dual_evaluation'],
+            'superior_evaluator_name': config['superior_evaluator_name'],
+            'tm_evaluator_name': config['tm_evaluator_name'],
+        }
     
 class MonthlyScoreSerializer(serializers.ModelSerializer):
     evaluation_type_display = serializers.CharField(source='get_evaluation_type_display', read_only=True)

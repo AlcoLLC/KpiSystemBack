@@ -16,6 +16,9 @@ class TaskSerializer(serializers.ModelSerializer):
     assignee_obj = serializers.SerializerMethodField(read_only=True)
     created_by_obj = serializers.SerializerMethodField(read_only=True)
 
+    evaluations_list = serializers.SerializerMethodField()
+    evaluation_status = serializers.SerializerMethodField()
+
     class Meta:
         model = Task
         fields = [
@@ -38,6 +41,8 @@ class TaskSerializer(serializers.ModelSerializer):
             'evaluations',
             'assignee_obj',
             'created_by_obj', 
+            'evaluations_list', 'evaluation_status',
+            
         ]
         read_only_fields = [
             'created_by',
@@ -55,7 +60,65 @@ class TaskSerializer(serializers.ModelSerializer):
         if obj.created_by:
             return UserSerializer(obj.created_by, context=self.context).data
         return None
-
+    
+    def get_evaluations_list(self, obj):
+        """Tapşırığın bütün dəyərləndirmələri"""
+        from kpis.serializers import KPIEvaluationSerializer
+        evaluations = obj.evaluations.all().select_related('evaluator', 'evaluatee')
+        return KPIEvaluationSerializer(evaluations, many=True).data
+    
+    def get_evaluation_status(self, obj):
+        """
+        Task üçün dəyərləndirmə statusunu qaytarır
+        
+        Returns:
+            dict: {
+                'hasSelfEval': bool,
+                'hasSuperiorEval': bool,
+                'hasTopEval': bool,
+                'finalScore': int | None
+            }
+        """
+        evaluations = obj.evaluations.all()
+        
+        # Hansı dəyərləndirmələr mövcuddur?
+        has_self_eval = any(e.evaluation_type == 'SELF' for e in evaluations)
+        has_superior_eval = any(e.evaluation_type == 'SUPERIOR' for e in evaluations)
+        has_top_eval = any(e.evaluation_type == 'TOP_MANAGEMENT' for e in evaluations)
+        
+        # Final score hesablama
+        final_score = None
+        
+        if obj.assignee:
+            eval_config = obj.assignee.get_evaluation_config()
+            
+            # Dual evaluation varsa (employee və manager üçün)
+            if eval_config.get('is_dual_evaluation'):
+                # TOP_MANAGEMENT skorunu götür
+                top_eval = next(
+                    (e for e in evaluations if e.evaluation_type == 'TOP_MANAGEMENT'), 
+                    None
+                )
+                if top_eval and top_eval.top_management_score is not None:
+                    final_score = top_eval.top_management_score
+                    
+            # Normal evaluation (department_lead, top_management üçün)
+            else:
+                # SUPERIOR skorunu götür
+                superior_eval = next(
+                    (e for e in evaluations if e.evaluation_type == 'SUPERIOR'), 
+                    None
+                )
+                if superior_eval and superior_eval.superior_score is not None:
+                    final_score = superior_eval.superior_score
+        
+        return {
+            'hasSelfEval': has_self_eval,
+            'hasSuperiorEval': has_superior_eval,
+            'hasTopEval': has_top_eval,
+            'finalScore': final_score,
+        }
+    
 class TaskAssigneeSerializer(serializers.ModelSerializer):
     position_name = serializers.CharField(source='position.name', read_only=True, default=None)
     class Meta:

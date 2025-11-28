@@ -9,7 +9,6 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.views import APIView
-from accounts.models import User
 from .models import Task, CalendarNote
 from .serializers import TaskSerializer, TaskUserSerializer, CalendarNoteSerializer
 from .utils import send_task_notification_email
@@ -63,20 +62,14 @@ class TaskViewSet(viewsets.ModelViewSet):
         task_status = "TODO"
         needs_approval_email = False
 
-        if creator.role == 'top_management':
-            superior = creator.get_superior()
-            if superior and superior.role == 'ceo':
-                is_approved = False
-                task_status = "PENDING"
-                needs_approval_email = True
-        
-        elif creator == assignee:
+        if creator == assignee:
             superior = creator.get_superior()
             if superior: 
                 is_approved = False
                 task_status = "PENDING"
                 needs_approval_email = True
-
+        
+        
         task = serializer.save(
             created_by=creator, 
             approved=is_approved, 

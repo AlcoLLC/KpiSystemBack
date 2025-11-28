@@ -101,7 +101,6 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
         
         evaluation_type = validated_data.get('evaluation_type')
         
-        # YENİLƏNMƏ: Skoru doğru sahəyə yaz
         if evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION:
             validated_data['self_score'] = score
             
@@ -109,7 +108,6 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
             validated_data['superior_score'] = score
             
         elif evaluation_type == KPIEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION:
-            # TOP MANAGEMENT qiymətləndirməsi üçün yeni sahə istifadə olunur
             validated_data['top_management_score'] = score
             
         return super().create(validated_data)

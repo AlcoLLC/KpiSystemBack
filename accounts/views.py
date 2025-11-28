@@ -85,7 +85,7 @@ class FilterableDepartmentListView(APIView):
         user = request.user
         queryset = Department.objects.none()  
 
-        if user.role in ['admin', 'ceo']: # GÜNCELLENDİ: CEO ve Admin tüm departmanları görür
+        if user.role in ['admin', 'ceo']:
             queryset = Department.objects.all().order_by('name')
 
         elif user.role == 'top_management':
@@ -115,7 +115,7 @@ class AvailableDepartmentsForRoleView(APIView):
             queryset = Department.objects.filter(department_lead__isnull=True)
         elif role == 'manager':
             queryset = Department.objects.filter(manager__isnull=True)
-        elif role == 'ceo': # YENİ: CEO təyin edilməyən departamentlər
+        elif role == 'ceo':
              queryset = Department.objects.filter(ceo__isnull=True)
 
         serializer = DepartmentSerializer(queryset, many=True)
