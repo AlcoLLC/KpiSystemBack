@@ -39,7 +39,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         if evaluator.role == 'admin':
             return True
         
-        eval_config = evaluatee.get_evaluation_config()
+        eval_config = evaluatee.get_evaluation_config_task()
         
         if evaluation_type == KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION:
             return eval_config['superior_evaluator'] and eval_config['superior_evaluator'].id == evaluator.id
@@ -66,7 +66,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         evaluatee = serializer.validated_data["evaluatee"]
         task = serializer.validated_data["task"]
         
-        eval_config = evaluatee.get_evaluation_config()
+        eval_config = evaluatee.get_evaluation_config_task()
         
         if evaluator == evaluatee:
             if not eval_config['requires_self']:
@@ -217,7 +217,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             if sub.role in ['admin', 'ceo']:
                 continue
             
-            eval_config = sub.get_evaluation_config()
+            eval_config = sub.get_evaluation_config_task()
             
             if eval_config['superior_evaluator'] and eval_config['superior_evaluator'].id == user.id:
                 users_to_evaluate_map.setdefault(sub.id, []).append(KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION)
@@ -349,30 +349,23 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             evaluation_type=KPIEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION
         ).first()
         
-        eval_config = evaluatee.get_evaluation_config()
+        eval_config = evaluatee.get_evaluation_config_task()
         
-        # DÜZƏLDILMIŞ: Final score hesablama
-        # Dual evaluation varsa -> TOP_MANAGEMENT skorunu götür
-        # Dual evaluation yoxsa -> SUPERIOR skorunu götür
         final_score = None
         if eval_config['is_dual_evaluation']:
-            # Dual evaluation: TOP_MANAGEMENT-in skoru final skorudur
             if top_management_evaluation and top_management_evaluation.top_management_score is not None:
                 final_score = top_management_evaluation.top_management_score
                 logger.info(f"[evaluation_summary] Dual eval: Final score = TOP_MANAGEMENT score = {final_score}")
             else:
                 logger.info(f"[evaluation_summary] Dual eval: TOP_MANAGEMENT score yoxdur")
         else:
-            # Dual evaluation yox: SUPERIOR-un skoru final skorudur
             if superior_evaluation and superior_evaluation.superior_score is not None:
                 final_score = superior_evaluation.superior_score
                 logger.info(f"[evaluation_summary] Non-dual eval: Final score = SUPERIOR score = {final_score}")
             else:
                 logger.info(f"[evaluation_summary] Non-dual eval: SUPERIOR score yoxdur")
         
-        # Dəyərləndirmənin tamamlanıb-tamamlanmadığını yoxlama
         if eval_config['is_dual_evaluation']:
-            # Dual evaluation üçün: Self + Superior + Top Management lazımdır
             is_complete = bool(
                 self_evaluation and 
                 superior_evaluation and 
@@ -380,7 +373,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                 top_management_evaluation.top_management_score is not None
             )
         else:
-            # Normal evaluation üçün: Self + Superior kifayətdir
             is_complete = bool(
                 self_evaluation and 
                 superior_evaluation and
@@ -411,7 +403,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         user = request.user
         new_score = request.data.get('score')
         new_comment = request.data.get('comment')
-
         attachment = request.data.get('attachment')
 
         is_admin = user.is_staff or user.role == 'admin'
@@ -423,6 +414,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         if instance.evaluator != user and not is_admin:
             raise PermissionDenied("Yalnız dəyərləndirməni yaradan şəxs və ya administrator redaktə edə bilər.")
 
+        # Self evaluation-da Superior dəyərləndirmə varsa, yalnız admin dəyişə bilər
         if is_self_eval:
             superior_eval_exists = KPIEvaluation.objects.filter(
                 task=instance.task,
@@ -431,7 +423,20 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             ).exists()
             if superior_eval_exists and user.role not in ['admin', 'ceo']: 
                 raise PermissionDenied("Rəhbər dəyərləndirməsi edildikdən sonra öz dəyərləndirmənizi redaktə edə bilməzsiniz (yalnız administrator/CEO dəyişə bilər).")
-            
+        
+        # Superior evaluation-da TM dəyərləndirmə varsa, yalnız admin dəyişə bilər
+        if is_superior_eval:
+            # DÜZƏLDILDI: get_evaluation_config_task() istifadə et
+            eval_config = instance.evaluatee.get_evaluation_config_task()
+            if eval_config['is_dual_evaluation']:
+                tm_eval_exists = KPIEvaluation.objects.filter(
+                    task=instance.task,
+                    evaluatee=instance.evaluatee,
+                    evaluation_type=KPIEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION
+                ).exists()
+                if tm_eval_exists and user.role not in ['admin', 'ceo']:
+                    raise PermissionDenied("Top Management dəyərləndirməsi edildikdən sonra Superior dəyərləndirməsini redaktə edə bilməzsiniz (yalnız administrator/CEO dəyişə bilər).")
+        
         old_score = None
         
         if new_score is not None:
@@ -468,6 +473,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                     instance.attachment.delete(save=False)
                 instance.attachment = None
 
+        # History əlavə et
         if old_score is not None and old_score != new_score:
             history_entry = {
                 "timestamp": datetime.now().isoformat(),

@@ -68,33 +68,18 @@ class TaskSerializer(serializers.ModelSerializer):
         return KPIEvaluationSerializer(evaluations, many=True).data
     
     def get_evaluation_status(self, obj):
-        """
-        Task üçün dəyərləndirmə statusunu qaytarır
-        
-        Returns:
-            dict: {
-                'hasSelfEval': bool,
-                'hasSuperiorEval': bool,
-                'hasTopEval': bool,
-                'finalScore': int | None
-            }
-        """
         evaluations = obj.evaluations.all()
         
-        # Hansı dəyərləndirmələr mövcuddur?
         has_self_eval = any(e.evaluation_type == 'SELF' for e in evaluations)
         has_superior_eval = any(e.evaluation_type == 'SUPERIOR' for e in evaluations)
         has_top_eval = any(e.evaluation_type == 'TOP_MANAGEMENT' for e in evaluations)
         
-        # Final score hesablama
         final_score = None
         
         if obj.assignee:
-            eval_config = obj.assignee.get_evaluation_config()
+            eval_config = obj.assignee.get_evaluation_config_task()
             
-            # Dual evaluation varsa (employee və manager üçün)
             if eval_config.get('is_dual_evaluation'):
-                # TOP_MANAGEMENT skorunu götür
                 top_eval = next(
                     (e for e in evaluations if e.evaluation_type == 'TOP_MANAGEMENT'), 
                     None
@@ -102,9 +87,7 @@ class TaskSerializer(serializers.ModelSerializer):
                 if top_eval and top_eval.top_management_score is not None:
                     final_score = top_eval.top_management_score
                     
-            # Normal evaluation (department_lead, top_management üçün)
             else:
-                # SUPERIOR skorunu götür
                 superior_eval = next(
                     (e for e in evaluations if e.evaluation_type == 'SUPERIOR'), 
                     None

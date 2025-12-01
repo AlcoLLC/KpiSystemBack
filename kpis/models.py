@@ -73,21 +73,23 @@ class KPIEvaluation(models.Model):
         unique_together = ("task", "evaluatee", "evaluation_type")
 
     def save(self, *args, **kwargs):
-        if self.evaluation_type == self.EvaluationType.TOP_MANAGEMENT_EVALUATION and self.top_management_score is not None:
-             self.final_score = self.top_management_score
-             
-        elif self.evaluation_type == self.EvaluationType.SUPERIOR_EVALUATION and self.superior_score is not None:
-             self.final_score = self.superior_score
+        evaluatee = self.evaluatee
+        eval_config = evaluatee.get_evaluation_config_task()
+        
+        if eval_config['is_dual_evaluation']:
+            if self.evaluation_type == self.EvaluationType.TOP_MANAGEMENT_EVALUATION and self.top_management_score is not None:
+                self.final_score = self.top_management_score
+            elif self.evaluation_type == self.EvaluationType.SUPERIOR_EVALUATION:
+                self.final_score = None
+        else:
+            if self.evaluation_type == self.EvaluationType.SUPERIOR_EVALUATION and self.superior_score is not None:
+                self.final_score = self.superior_score
 
         super().save(*args, **kwargs)
 
-        if self.evaluation_type == self.EvaluationType.TOP_MANAGEMENT_EVALUATION:
+        if self.evaluation_type == self.EvaluationType.TOP_MANAGEMENT_EVALUATION and eval_config['is_dual_evaluation']:
             KPIEvaluation.objects.filter(
                 task=self.task,
                 evaluatee=self.evaluatee,
                 evaluation_type=self.EvaluationType.SUPERIOR_EVALUATION
             ).update(final_score=None)
-
-    def __str__(self):
-        return f"KPI {self.task.title}: {self.evaluator} -> {self.evaluatee} - [{self.get_evaluation_type_display()}]"
-

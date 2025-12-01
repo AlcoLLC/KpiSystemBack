@@ -454,6 +454,65 @@ class User(AbstractUser):
             return None
 
         return None
+    
+    def get_kpi_evaluator_by_type_task(self, evaluation_type):
+        if self.role in ["admin", "ceo"] or not self.department:
+            return None
+        
+        def find_next_available_superior(user):
+            """Birbaşa üst rəhbəri tapır"""
+            if user.role == 'employee':
+                if user.department.manager and user.department.manager.is_active:
+                    return user.department.manager
+                if user.department.department_lead and user.department.department_lead.is_active:
+                    return user.department.department_lead
+                if user.department.top_management.exists():
+                    return user.department.top_management.filter(is_active=True).first()
+                return User.objects.filter(role='ceo', is_active=True).first()
+            
+            elif user.role == 'manager':
+                if user.department.department_lead and user.department.department_lead.is_active:
+                    return user.department.department_lead
+                if user.department.top_management.exists():
+                    return user.department.top_management.filter(is_active=True).first()
+                return User.objects.filter(role='ceo', is_active=True).first()
+            
+            elif user.role == 'department_lead':
+                if user.department.top_management.exists():
+                    return user.department.top_management.filter(is_active=True).first()
+                return User.objects.filter(role='ceo', is_active=True).first()
+            
+            elif user.role == 'top_management':
+                return User.objects.filter(role='ceo', is_active=True).first()
+            
+            return None
+
+        if evaluation_type == 'SUPERIOR':
+            superior = find_next_available_superior(self)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[get_kpi_evaluator_by_type_task] {self.get_full_name()} ({self.role}) -> SUPERIOR: {superior.get_full_name() if superior else 'None'} ({superior.role if superior else 'N/A'})")
+            return superior
+        
+        elif evaluation_type == 'TOP_MANAGEMENT':
+            # Yalnız employee və manager üçün Top Management dəyərləndirməsi
+            if self.role not in ['employee', 'manager']:
+                return None
+            
+            # Department-də Top Management olmalıdır
+            if self.department and self.department.top_management.exists():
+                tm = self.department.top_management.filter(is_active=True).first()
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"[get_kpi_evaluator_by_type_task] {self.get_full_name()} ({self.role}) -> TOP_MANAGEMENT: {tm.get_full_name() if tm else 'None'}")
+                return tm
+            
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[get_kpi_evaluator_by_type_task] {self.get_full_name()} ({self.role}) -> TOP_MANAGEMENT: None (No TM in department)")
+            return None
+
+        return None
 
     def get_kpi_evaluator(self):
         if self.role in ["admin", "ceo"]:
@@ -500,6 +559,21 @@ class User(AbstractUser):
             return has_tm
         
         return False
+    
+    def needs_dual_evaluation_task(self):
+        if self.role not in ['employee', 'manager']:
+            return False
+        
+        if not self.department:
+            return False
+        
+        has_tm = self.department.top_management.exists()
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[needs_dual_evaluation_task] {self.get_full_name()} ({self.role}) -> {has_tm} (TM exists: {has_tm})")
+        
+        return has_tm
 
     def get_evaluation_config(self):
         if self.role in ['admin', 'ceo']:
@@ -526,5 +600,38 @@ class User(AbstractUser):
             'superior_evaluator_name': superior.get_full_name() if superior else None,
             'tm_evaluator': tm_evaluator,
             'tm_evaluator_name': tm_evaluator.get_full_name() if tm_evaluator else None,
+            'is_dual_evaluation': is_dual
+        }
+    
+    def get_evaluation_config_task(self):
+        """Dəyərləndirmə konfiqurasiyasını qaytarır"""
+        if self.role in ['admin', 'ceo']:
+            return {
+                'requires_self': False,
+                'superior_evaluator': None,
+                'superior_evaluator_name': None,
+                'superior_evaluator_id': None,
+                'tm_evaluator': None,
+                'tm_evaluator_name': None,
+                'tm_evaluator_id': None,
+                'is_dual_evaluation': False
+            }
+        
+        superior = self.get_kpi_evaluator_by_type_task('SUPERIOR')
+        tm_evaluator = self.get_kpi_evaluator_by_type_task('TOP_MANAGEMENT')
+        is_dual = self.needs_dual_evaluation_task()
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[get_evaluation_config] {self.get_full_name()} ({self.role}) -> Superior: {superior.get_full_name() if superior else 'None'}, TM: {tm_evaluator.get_full_name() if tm_evaluator else 'None'}, Dual: {is_dual}")
+        
+        return {
+            'requires_self': True,
+            'superior_evaluator': superior,
+            'superior_evaluator_name': superior.get_full_name() if superior else None,
+            'superior_evaluator_id': superior.id if superior else None,
+            'tm_evaluator': tm_evaluator,
+            'tm_evaluator_name': tm_evaluator.get_full_name() if tm_evaluator else None,
+            'tm_evaluator_id': tm_evaluator.id if tm_evaluator else None,
             'is_dual_evaluation': is_dual
         }
