@@ -187,7 +187,9 @@ if DEBUG:
     if os.path.exists(STATIC_DIR):
         STATICFILES_DIRS = [STATIC_DIR]
 else:
-    STATIC_ROOT = STATIC_DIR
+    STATICFILES_DIRS = [
+        os.path.join(BASE_DIR, "static"), 
+    ]
 
 
 EMAIL_HOST = config('EMAIL_HOST')
