@@ -17,5 +17,4 @@ urlpatterns = [
     path('filterable-departments/', FilterableDepartmentListView.as_view(), name='filterable-departments'),
     path('available-departments/', AvailableDepartmentsForRoleView.as_view(), name='available-departments'),
     path("", include(router.urls)),
-
 ]

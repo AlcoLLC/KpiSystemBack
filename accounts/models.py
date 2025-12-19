@@ -58,6 +58,21 @@ class Position(models.Model):
 
     def __str__(self):
         return self.name
+    
+class FactoryPosition(models.Model):
+    name = models.CharField(
+        max_length=255, 
+        unique=True, 
+        verbose_name="Vəzifənin adı (Zavod)"
+    )
+
+    class Meta:
+        verbose_name = "Zavod Vəzifəsi"
+        verbose_name_plural = "Zavod Vəzifələri"
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
 
 class User(AbstractUser):
     ROLE_CHOICES = [
@@ -635,3 +650,5 @@ class User(AbstractUser):
             'tm_evaluator_id': tm_evaluator.id if tm_evaluator else None,
             'is_dual_evaluation': is_dual
         }
+
+
