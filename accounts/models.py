@@ -60,17 +60,9 @@ class Position(models.Model):
         return self.name
     
 class FactoryPosition(models.Model):
-    name = models.CharField(
-        max_length=255, 
-        unique=True, 
-        verbose_name="Vəzifənin adı (Zavod)"
-    )
-
+    name = models.CharField(max_length=255, unique=True, verbose_name="Zavod Vəzifəsi")
     class Meta:
-        verbose_name = "Zavod Vəzifəsi"
-        verbose_name_plural = "Zavod Vəzifələri"
         ordering = ['name']
-
     def __str__(self):
         return self.name
 
@@ -83,8 +75,23 @@ class User(AbstractUser):
         ("manager", "Menecer"),
         ("employee", "İşçi"),
     ]
+
+    FACTORY_ROLE_CHOICES = [
+        ("admin", "Admin"),
+        ("top_management", "Zavod Direktoru"),
+        ("deputy_director", "Zavod Direktoru Müavini"),
+        ("department_lead", "Bölmə Rəhbəri"),
+        ("employee", "İşçi"),
+    ]
+
+    FACTORY_TYPES = [
+        ("dolum", "Dolum"),
+        ("bidon", "Bidon"),
+    ]
     
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="employee")
+    factory_role = models.CharField(max_length=20, choices=FACTORY_ROLE_CHOICES, null=True, blank=True)
+    factory_type = models.CharField(max_length=10, choices=FACTORY_TYPES, null=True, blank=True)
     profile_photo = models.FileField(
         upload_to='profile_photos/', 
         null=True, 
@@ -101,6 +108,8 @@ class User(AbstractUser):
             related_name='users',
             verbose_name="Vəzifə"
     )
+
+    factory_position = models.ForeignKey(FactoryPosition, on_delete=models.SET_NULL, null=True, blank=True, related_name='factory_users')
 
     department = models.ForeignKey(
         Department, 
@@ -140,6 +149,12 @@ class User(AbstractUser):
         }
         return role_hierarchy.get(self.role, "Unknown")
     
+    @property
+    def role_display(self):
+        if self.factory_role:
+            return self.get_factory_role_display() 
+        return self.get_role_display()
+
     def get_superior(self):
         if self.role == "employee":
             if not self.department:
@@ -207,6 +222,20 @@ class User(AbstractUser):
     def get_direct_superior(self):
         if self.role in ["ceo", "admin"]:
             return None
+        
+        if self.factory_type and self.factory_role:
+            if self.factory_role == "employee":
+                lead = User.objects.filter(factory_role="department_lead", factory_type=self.factory_type, is_active=True).first()
+                if lead: return lead
+                deputy = User.objects.filter(factory_role="deputy_director", factory_type=self.factory_type, is_active=True).first()
+                return deputy if deputy else User.objects.filter(factory_role="top_management", factory_type=self.factory_type, is_active=True).first()
+            
+            if self.factory_role == "department_lead":
+                deputy = User.objects.filter(factory_role="deputy_director", factory_type=self.factory_type, is_active=True).first()
+                return deputy if deputy else User.objects.filter(factory_role="top_management", factory_type=self.factory_type, is_active=True).first()
+            
+            if self.factory_role == "deputy_director":
+                return User.objects.filter(factory_role="top_management", factory_type=self.factory_type, is_active=True).first()
 
         if self.department:
             if self.role == "employee":
@@ -243,6 +272,14 @@ class User(AbstractUser):
     def get_subordinates(self):
         if self.role == 'admin':
             return User.objects.filter(is_active=True).exclude(pk=self.pk).order_by('first_name', 'last_name')
+        
+        if self.factory_type and self.factory_role:
+            if self.factory_role == 'top_management':
+                return User.objects.filter(factory_type=self.factory_type).exclude(pk=self.pk)
+            if self.factory_role == 'deputy_director':
+                return User.objects.filter(factory_type=self.factory_type, factory_role__in=['department_lead', 'employee'])
+            if self.factory_role == 'department_lead':
+                return User.objects.filter(factory_type=self.factory_type, factory_role='employee')
         
         if self.role == 'ceo': 
             return User.objects.filter(is_active=True).exclude(
@@ -510,11 +547,9 @@ class User(AbstractUser):
             return superior
         
         elif evaluation_type == 'TOP_MANAGEMENT':
-            # Yalnız employee və manager üçün Top Management dəyərləndirməsi
             if self.role not in ['employee', 'manager']:
                 return None
             
-            # Department-də Top Management olmalıdır
             if self.department and self.department.top_management.exists():
                 tm = self.department.top_management.filter(is_active=True).first()
                 import logging

@@ -1,44 +1,57 @@
 from django.contrib import admin
-from .models import User, Department, Position
+from .models import User, Department, Position, FactoryPosition
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.utils.translation import gettext_lazy as _
 
 @admin.register(Position)
 class PositionAdmin(admin.ModelAdmin):
     list_display = ('name',)
     search_fields = ('name',)
 
+@admin.register(FactoryPosition)
+class FactoryPositionAdmin(admin.ModelAdmin):
+    list_display = ('name',)
+    search_fields = ('name',)
+
+
+class ManagedDepartmentsInline(admin.TabularInline):
+    model = Department.top_management.through # ManyToMany əlaqəsi üçün vasitəçi cədvəl
+    extra = 1
+    verbose_name = _("İdarə edilən Departament")
+    verbose_name_plural = _("İdarə edilən Departamentlər")
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    list_display = ("id", "username", "email", 'position', "role", "department", "first_name", "last_name", "is_staff")
-    list_filter = ("role", "is_staff", 'position', "is_superuser", "groups")
+    inlines = [ManagedDepartmentsInline] # Inline-ı bura əlavə edirik
+    
+    list_display = (
+        "id", "username", "first_name", "last_name", 
+        "role", "factory_role", "factory_type", "department", "is_staff"
+    )
+    
+    list_filter = (
+        "role", "factory_role", "factory_type", "is_staff", 
+        "department", "position", "factory_position"
+    )
+    
     search_fields = ('username', 'email', 'first_name', 'last_name')
-    ordering = ('id',)
-
+    ordering = ('-id',)
 
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)
         
-        # GÜNCELLENDİ: CEO ve Top Management rollerine sahip kullanıcılar için 'department' alanı gizlenir.
-        if obj and obj.role in ['ceo', 'top_management']:
-            additional_fields = ('role', 'profile_photo', 'phone_number', 'position')
-        else:
-            # Diğer roller (employee, manager, department_lead, admin) için 'department' gösterilir.
-            additional_fields = ('role', 'department', 'profile_photo', 'phone_number', 'position')
-            
-        return fieldsets + (('Əlavə Məlumatlar', {'fields': additional_fields}),)
+        # 'top_managed_departments' sahəsini office_fields siyahısından çıxarırıq
+        # Çünki o fiziki sahə deyil və Inline ilə idarə olunacaq
+        office_fields = ('role', 'position', 'department') 
+        
+        factory_fields = ('factory_role', 'factory_type', 'factory_position')
+        extra_fields = ('profile_photo', 'phone_number', 'slug')
 
+        new_fieldsets = list(fieldsets)
+        new_fieldsets.append((_('Ofis Strukturu'), {'fields': office_fields}))
+        new_fieldsets.append((_('Zavod Strukturu'), {'fields': factory_fields}))
+        new_fieldsets.append((_('Əlavə Parametrlər'), {'fields': extra_fields}))
+        
+        return new_fieldsets
 
-@admin.register(Department)
-class DepartmentAdmin(admin.ModelAdmin):
-    # GÜNCELLENDİ: 'ceo' alanı list_display'a eklendi.
-    list_display = ('id', 'name', 'ceo', 'manager', 'department_lead', 'display_top_management')
-    list_filter = ('manager', 'department_lead', 'ceo')  
-    search_fields = ('name',)
-    
-    filter_horizontal = ('top_management',)
-
-    def display_top_management(self, obj):
-        # top_management alanındaki kullanıcıların tam adlarını virgülle ayırarak gösterir
-        return ", ".join([user.get_full_name() for user in obj.top_management.all()])
-    display_top_management.short_description = 'Üst Rəhbərlik (Top Management)'
+    readonly_fields = ('slug',)

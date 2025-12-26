@@ -10,6 +10,7 @@ urlpatterns = [
     path('api/performance/', include('performance.urls')),
     path('api/performance/', include('userkpisystem.urls')),
     path('api/reports/', include('reports.urls')),
+    path('api/equipment/', include('equipment.urls')),
 ]
 
 if settings.DEBUG:

@@ -1,6 +1,6 @@
 from rest_framework import viewsets, permissions, status, generics, filters
-from .models import User, Department, Position
-from .serializers import UserSerializer, DepartmentSerializer, MyTokenObtainPairSerializer, PositionSerializer
+from .models import User, Department, Position, FactoryPosition
+from .serializers import UserSerializer, DepartmentSerializer, MyTokenObtainPairSerializer, PositionSerializer, FactoryUserSerializer, OfficeUserSerializer, FactoryPositionSerializer
 from .permissions import IsOwnerOrAdminOrReadOnly
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.views import APIView
@@ -12,11 +12,8 @@ from .filters import UserFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
-class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all().select_related('department', 'position').order_by('first_name', 'last_name')
-    serializer_class = UserSerializer
+class BaseUserViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
-
     filter_backends = [DjangoFilterBackend]
     filterset_class = UserFilter
 
@@ -31,6 +28,14 @@ class UserViewSet(viewsets.ModelViewSet):
             serializer.is_valid(raise_exception=True)
             serializer.save()
             return Response(serializer.data)
+
+class OfficeUserViewSet(BaseUserViewSet):
+    queryset = User.objects.filter(factory_role__isnull=True).select_related('department', 'position').order_by('first_name', 'last_name')
+    serializer_class = OfficeUserSerializer
+
+class FactoryUserViewSet(BaseUserViewSet):
+    queryset = User.objects.filter(factory_role__isnull=False).select_related('factory_position').order_by('first_name', 'last_name')
+    serializer_class = FactoryUserSerializer
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
@@ -78,7 +83,6 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     
 
 class FilterableDepartmentListView(APIView):
-
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
@@ -98,8 +102,14 @@ class FilterableDepartmentListView(APIView):
 class PositionViewSet(viewsets.ModelViewSet):
     queryset = Position.objects.all().order_by('name')
     serializer_class = PositionSerializer
-    permission_classes = [permissions.IsAuthenticated]  
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name']
 
+class FactoryPositionViewSet(viewsets.ModelViewSet):
+    queryset = FactoryPosition.objects.all().order_by('name')
+    serializer_class = FactoryPositionSerializer
+    permission_classes = [permissions.IsAuthenticated]
     filter_backends = [filters.SearchFilter]
     search_fields = ['name']
 

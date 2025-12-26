@@ -207,11 +207,9 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
     def my_subordinates_pending_evaluations(self, request):
         user = request.user
         
-        # 1. Bütün aktiv istifadəçilər
         all_active_users = User.objects.filter(is_active=True).exclude(pk=user.pk)
         
-        # 2. Cari istifadəçinin qiymətləndirməli olduğu istifadəçilər və qiymətləndirmə növləri
-        users_to_evaluate_map = {} # {evaluatee_id: [eval_type1, eval_type2]}
+        users_to_evaluate_map = {}
         
         for sub in all_active_users:
             if sub.role in ['admin', 'ceo']:
@@ -225,7 +223,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             if eval_config['tm_evaluator'] and eval_config['tm_evaluator'].id == user.id:
                 users_to_evaluate_map.setdefault(sub.id, []).append(KPIEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION)
 
-        # Admin hər kəsi qiymətləndirə bilər (Superior və TM), lakin CEO yalnız Top Management-ı.
         if user.role == 'admin':
             all_ids = all_active_users.exclude(role__in=['admin', 'ceo']).values_list('id', flat=True)
             for uid in all_ids:
@@ -243,7 +240,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         if not evaluable_ids:
             return Response([])
         
-        # 3. Taskları tapmaq
         pending_tasks = Task.objects.filter(status='DONE', assignee_id__in=evaluable_ids)
         
         final_pending_tasks = []
@@ -251,20 +247,18 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             evaluatee_id = task.assignee_id
             eval_types_to_do = users_to_evaluate_map.get(evaluatee_id, [])
             
-            # İlkin şərtlər (Self Evaluation)
             has_self_eval = KPIEvaluation.objects.filter(
                 task=task,
                 evaluatee_id=evaluatee_id,
                 evaluation_type=KPIEvaluation.EvaluationType.SELF_EVALUATION
             ).exists()
             
-            if not has_self_eval and evaluatee_id != user.id and user.role != 'admin': # Admin yoxlayırsa, öz dəyərləndirməyə ehtiyac yoxdur.
+            if not has_self_eval and evaluatee_id != user.id and user.role != 'admin': 
                  continue
 
             is_pending = False
             for eval_type in eval_types_to_do:
                 
-                # Superior dəyərləndirmə gözlənilirsə
                 if eval_type == KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION:
                     if not KPIEvaluation.objects.filter(
                         task=task,
@@ -274,7 +268,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                         is_pending = True
                         break
                 
-                # Top Management dəyərləndirmə gözlənilirsə (Superior tamamlandıqdan sonra)
                 elif eval_type == KPIEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION:
                     superior_exists = KPIEvaluation.objects.filter(
                         task=task,
@@ -286,13 +279,12 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                         evaluator=user,
                         evaluation_type=KPIEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION
                     ).exists():
-                        is_pending = True # Bu, taskı "Məndən gözlənilən" siyahısına salır
+                        is_pending = True 
                         break
                     
             if is_pending:
                 final_pending_tasks.append(task)
                 
-        # Nəticə Task objeleri olaraq qaytarılır
         serializer = TaskSerializer(final_pending_tasks, many=True, context={'request': request})
         return Response(serializer.data)
      
@@ -414,7 +406,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         if instance.evaluator != user and not is_admin:
             raise PermissionDenied("Yalnız dəyərləndirməni yaradan şəxs və ya administrator redaktə edə bilər.")
 
-        # Self evaluation-da Superior dəyərləndirmə varsa, yalnız admin dəyişə bilər
         if is_self_eval:
             superior_eval_exists = KPIEvaluation.objects.filter(
                 task=instance.task,
@@ -424,9 +415,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             if superior_eval_exists and user.role not in ['admin', 'ceo']: 
                 raise PermissionDenied("Rəhbər dəyərləndirməsi edildikdən sonra öz dəyərləndirmənizi redaktə edə bilməzsiniz (yalnız administrator/CEO dəyişə bilər).")
         
-        # Superior evaluation-da TM dəyərləndirmə varsa, yalnız admin dəyişə bilər
         if is_superior_eval:
-            # DÜZƏLDILDI: get_evaluation_config_task() istifadə et
             eval_config = instance.evaluatee.get_evaluation_config_task()
             if eval_config['is_dual_evaluation']:
                 tm_eval_exists = KPIEvaluation.objects.filter(

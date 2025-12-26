@@ -2,12 +2,14 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework.routers import DefaultRouter
-from .views import UserViewSet, DepartmentViewSet, MyTokenObtainPairView, LogoutView, UserProfileView, FilterableDepartmentListView, PositionViewSet, AvailableDepartmentsForRoleView
+from .views import DepartmentViewSet, MyTokenObtainPairView, LogoutView, UserProfileView, FilterableDepartmentListView, PositionViewSet, AvailableDepartmentsForRoleView, FactoryUserViewSet, FactoryPositionViewSet, OfficeUserViewSet
 
 router = DefaultRouter()
-router.register(r"users", UserViewSet)
+router.register(r"users", OfficeUserViewSet)
 router.register(r"departments", DepartmentViewSet)
 router.register(r"positions", PositionViewSet, basename='account-position')
+router.register(r'factory/users', FactoryUserViewSet, basename='factory-user')
+router.register(r'factory/positions', FactoryPositionViewSet, basename='factory-position')
 
 urlpatterns = [
     path('login/', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),

@@ -11,7 +11,7 @@ class KPIEvaluationAdmin(admin.ModelAdmin):
         "evaluation_type",
         "self_score",
         "superior_score",
-        "top_management_score", # YENİ: Listdə göstər
+        "top_management_score", 
         "final_score",
         "created_at",
         "updated_by",
@@ -49,8 +49,8 @@ class KPIEvaluationAdmin(admin.ModelAdmin):
         ("Scores", {
             "fields": (
                 "self_score",
-                "superior_score",        # Üst Rəhbər (Manager/Lead) balı
-                "top_management_score",  # YENİ: Top Management balı
+                "superior_score",       
+                "top_management_score", 
                 "final_score",
                 "previous_score",
             )
@@ -69,29 +69,21 @@ class KPIEvaluationAdmin(admin.ModelAdmin):
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
-        
-        # Məntiq: Yalnız cari Evaluation Type-a uyğun skor sahəsini aktiv saxla, digərlərini deaktiv et.
-        
-        # Default olaraq bütün skor sahələrini deaktiv edək
         form.base_fields['self_score'].widget.attrs['disabled'] = True
         form.base_fields['superior_score'].widget.attrs['disabled'] = True
-        # top_management_score modeldə yoxdursa, bu hissə xəta verəcək, modeldə olduğunu fərz edirik
         if 'top_management_score' in form.base_fields: 
             form.base_fields['top_management_score'].widget.attrs['disabled'] = True
 
         if obj:
             if obj.evaluation_type == KPIEvaluation.EvaluationType.SELF_EVALUATION:
-                # SELF üçün yalnız self_score aktivdir, Superior və TM yox
                 form.base_fields['self_score'].widget.attrs.pop('disabled', None)
                 form.base_fields['self_score'].help_text = "İşçinin öz dəyərləndirməsidir (1-10 arası)."
 
             elif obj.evaluation_type == KPIEvaluation.EvaluationType.SUPERIOR_EVALUATION:
-                # SUPERIOR üçün yalnız superior_score aktivdir
                 form.base_fields['superior_score'].widget.attrs.pop('disabled', None)
                 form.base_fields['superior_score'].help_text = "Üst rəhbərin dəyərləndirməsidir (1-100 arası)."
 
             elif obj.evaluation_type == KPIEvaluation.EvaluationType.TOP_MANAGEMENT_EVALUATION:
-                # TOP MANAGEMENT üçün yalnız top_management_score aktivdir
                 if 'top_management_score' in form.base_fields:
                     form.base_fields['top_management_score'].widget.attrs.pop('disabled', None)
                     form.base_fields['top_management_score'].help_text = "Yuxarı İdarəetmənin dəyərləndirməsidir (1-100 arası)."
