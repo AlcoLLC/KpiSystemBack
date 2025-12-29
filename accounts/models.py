@@ -89,7 +89,7 @@ class User(AbstractUser):
         ("bidon", "Bidon"),
     ]
     
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="employee")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, null=True, blank=True)
     factory_role = models.CharField(max_length=20, choices=FACTORY_ROLE_CHOICES, null=True, blank=True)
     factory_type = models.CharField(max_length=10, choices=FACTORY_TYPES, null=True, blank=True)
     profile_photo = models.FileField(
