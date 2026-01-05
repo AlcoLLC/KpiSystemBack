@@ -30,11 +30,15 @@ class BaseUserViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
 
 class OfficeUserViewSet(BaseUserViewSet):
-    queryset = User.objects.filter(factory_role__isnull=True).select_related('department', 'position').order_by('first_name', 'last_name')
+    queryset = User.objects.filter(factory_role__isnull=True).select_related(
+        'department', 'position'
+    ).prefetch_related('top_managed_departments').order_by('first_name', 'last_name')
     serializer_class = OfficeUserSerializer
 
 class FactoryUserViewSet(BaseUserViewSet):
-    queryset = User.objects.filter(factory_role__isnull=False).select_related('factory_position').order_by('first_name', 'last_name')
+    queryset = User.objects.filter(factory_role__isnull=False).select_related(
+        'factory_position'
+    ).order_by('first_name', 'last_name')
     serializer_class = FactoryUserSerializer
 
 
@@ -74,7 +78,9 @@ class LogoutView(APIView):
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
-    queryset = User.objects.all()
+    queryset = User.objects.select_related(
+        'department', 'position', 'factory_position'
+    ).prefetch_related('top_managed_departments')
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
