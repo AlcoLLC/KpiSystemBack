@@ -40,7 +40,7 @@ class OfficeUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "email", "username", "first_name", "last_name", "role", "role_display", 
-                  "position", "department", "profile_photo", "phone_number", "password", "user_type",
+                  "position", "department", "profile_photo", "phone_number", "password", "user_type", "factory_role",
                   "all_departments", "position_details", "top_managed_departments"]
         
     def get_user_type(self, obj):

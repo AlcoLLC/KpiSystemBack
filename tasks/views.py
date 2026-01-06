@@ -23,6 +23,9 @@ def get_visible_tasks(user):
     if user.role == "admin":
         return Task.objects.all()
 
+    if user.factory_role == "top_management":
+        return Task.objects.filter(assignee__factory_role__isnull=True)
+
     subordinate_ids = user.get_subordinates().values_list('id', flat=True)
     query = Q(assignee=user) | Q(assignee_id__in=list(subordinate_ids))
 
@@ -38,6 +41,24 @@ def get_visible_tasks(user):
     
     return Task.objects.filter(query).distinct()
 
+def can_modify_task(user, task):
+    if user.role == "admin":
+        return True
+    
+    if user.factory_role == "top_management":
+        return False
+    
+    if task.created_by == user:
+        return True
+    
+    if task.assignee == user:
+        return True
+    
+    subordinates = user.get_subordinates()
+    if task.assignee in subordinates:
+        return True
+    
+    return False
 
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
@@ -51,6 +72,10 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         creator = self.request.user
+
+        if creator.factory_role == "top_management":
+            raise PermissionDenied("Zavod direktorları ofis tapşırıqları yarada bilməz.")
+        
         assignee = serializer.validated_data["assignee"]
 
         if creator != assignee and creator.role != 'admin':
@@ -90,6 +115,11 @@ class TaskViewSet(viewsets.ModelViewSet):
             send_task_notification_email(task, notification_type="new_assignment")
 
     def perform_update(self, serializer):
+        task = self.get_object()
+        
+        if not can_modify_task(self.request.user, task):
+            raise PermissionDenied("Bu tapşırığı redaktə etmək səlahiyyətiniz yoxdur.")
+        
         original_task = self.get_object()
         original_status = original_task.status
         
@@ -107,7 +137,6 @@ class TaskViewSet(viewsets.ModelViewSet):
                     'new_status': updated_task.status
                 }
             )
-
 
 class AssignableUserListView(generics.ListAPIView):
     serializer_class = TaskUserSerializer
