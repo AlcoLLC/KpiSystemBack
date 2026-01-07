@@ -42,18 +42,31 @@ class OfficeUserSerializer(serializers.ModelSerializer):
         fields = ["id", "email", "username", "first_name", "last_name", "role", "role_display", 
                   "position", "department", "profile_photo", "phone_number", "password", "user_type", "factory_role",
                   "all_departments", "position_details", "top_managed_departments"]
+        extra_kwargs = {
+            'username': {'required': False, 'allow_blank': True}
+        }
         
+    def validate(self, attrs):
+        if not attrs.get('username') and attrs.get('email'):
+            attrs['username'] = attrs.get('email')
+        return super().validate(attrs)
+    
     def get_user_type(self, obj):
         if obj.factory_role:
             return "factory"
         return "office"
 
     def create(self, validated_data):
+        top_departments = validated_data.pop('top_managed_departments', None)
         password = validated_data.pop('password', None)
         email = validated_data.get('email')
         validated_data['username'] = email 
         
         user = User.objects.create_user(password=password, **validated_data)
+        
+        if top_departments is not None:
+            user.top_managed_departments.set(top_departments)
+            
         return user
     
     def get_all_departments(self, obj):
@@ -97,49 +110,41 @@ class OfficeUserSerializer(serializers.ModelSerializer):
         if 'role' in validated_data:
             if instance.role == 'manager' and new_role != 'manager':
                 Department.objects.filter(manager=instance).update(manager=None)
-
             if instance.role == 'department_lead' and new_role != 'department_lead':
                 Department.objects.filter(department_lead=instance).update(department_lead=None)
-                
             if instance.role == 'ceo' and new_role != 'ceo': 
                 Department.objects.filter(ceo=instance).update(ceo=None)
-            
             if instance.role == 'top_management' and new_role != 'top_management':
                  instance.top_managed_departments.clear()
 
-        
         if profile_photo == '':
             instance.profile_photo.delete(save=False)
             validated_data['profile_photo'] = None
 
-        instance = super().update(instance, validated_data)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
 
         if password:
             instance.set_password(password)
-
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
         
         instance.save()
+        
+        if top_departments is not None:
+            instance.top_managed_departments.set(top_departments)
         
         if new_department:
             if new_role == 'manager':
                 Department.objects.filter(manager=instance).exclude(id=new_department.id).update(manager=None)
                 new_department.manager = instance
                 new_department.save()
-            
             elif new_role == 'department_lead':
                 Department.objects.filter(department_lead=instance).exclude(id=new_department.id).update(department_lead=None)
                 new_department.department_lead = instance
                 new_department.save()
-                
             elif new_role == 'ceo': 
                 Department.objects.filter(ceo=instance).exclude(id=new_department.id).update(ceo=None)
                 new_department.ceo = instance
                 new_department.save()
-            
-        if top_departments is not None:
-            instance.top_managed_departments.set(top_departments)
         
         return instance
     
@@ -264,6 +269,12 @@ class UserSerializer(serializers.ModelSerializer):
             "phone_number", "password", "top_managed_departments", "user_type"
         ]
         read_only_fields = ['role_display', 'factory_type_display', 'all_departments', 'position_details']
+        extra_kwargs = {'username': {'required': False}}
+
+    def validate(self, attrs):
+        if not attrs.get('username') and attrs.get('email'):
+            attrs['username'] = attrs.get('email')
+        return super().validate(attrs)
 
     def get_user_type(self, obj):
         if obj.factory_role:
@@ -354,14 +365,15 @@ class UserSerializer(serializers.ModelSerializer):
         top_departments = validated_data.pop('top_managed_departments', None)
         password = validated_data.pop('password', None)
         
-        role = validated_data.get('role')
-        department = validated_data.get('department')
-
         user = User.objects.create_user(password=password, **validated_data)
 
         if not is_factory:
             role = validated_data.get('role')
             department = validated_data.get('department')
+            
+            if top_departments is not None:
+                user.top_managed_departments.set(top_departments)
+
             if department:
                 if role == 'manager':
                     Department.objects.filter(id=department.id).update(manager=user)
@@ -369,9 +381,6 @@ class UserSerializer(serializers.ModelSerializer):
                     Department.objects.filter(id=department.id).update(department_lead=user)
                 elif role == 'ceo': 
                     Department.objects.filter(id=department.id).update(ceo=user)
-            
-            if top_departments is not None:
-                user.top_managed_departments.set(top_departments)
         
         return user
 
@@ -426,7 +435,6 @@ class UserSerializer(serializers.ModelSerializer):
 
             if top_departments is not None:
                 instance.top_managed_departments.set(top_departments)
-            instance.top_managed_departments.set(top_departments)
         
         return instance
 
