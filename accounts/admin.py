@@ -15,14 +15,14 @@ class FactoryPositionAdmin(admin.ModelAdmin):
 
 
 class ManagedDepartmentsInline(admin.TabularInline):
-    model = Department.top_management.through # ManyToMany əlaqəsi üçün vasitəçi cədvəl
+    model = Department.top_management.through 
     extra = 1
     verbose_name = _("İdarə edilən Departament")
     verbose_name_plural = _("İdarə edilən Departamentlər")
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    inlines = [ManagedDepartmentsInline] # Inline-ı bura əlavə edirik
+    inlines = [ManagedDepartmentsInline]
     
     list_display = (
         "id", "username", "first_name", "last_name", 
@@ -40,8 +40,6 @@ class UserAdmin(BaseUserAdmin):
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)
         
-        # 'top_managed_departments' sahəsini office_fields siyahısından çıxarırıq
-        # Çünki o fiziki sahə deyil və Inline ilə idarə olunacaq
         office_fields = ('role', 'position', 'department') 
         
         factory_fields = ('factory_role', 'factory_type', 'factory_position')

@@ -217,6 +217,9 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
         
         evaluator = request.user
         
+        if evaluator.factory_role == "top_management":
+            return False
+        
         if evaluator.role == 'admin': 
             return True
         
@@ -268,6 +271,9 @@ class UserForEvaluationSerializer(serializers.ModelSerializer):
             return False
         
         evaluator = request.user
+        
+        if evaluator.factory_role == "top_management":
+            return False
         
         if evaluator.role == 'admin':
             return True

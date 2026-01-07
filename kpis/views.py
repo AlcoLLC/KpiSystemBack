@@ -24,6 +24,12 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+
+        if user.factory_role == "top_management":
+            return self.queryset.filter(
+                evaluatee__factory_role__isnull=True
+            ).select_related('task', 'evaluator', 'evaluatee')
+        
         if user.is_staff or user.role in ['admin', 'ceo']: 
             return self.queryset.select_related('task', 'evaluator', 'evaluatee')
 
@@ -52,6 +58,9 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
         return False
 
     def can_view_evaluation_results(self, viewer, evaluatee):
+        if viewer.factory_role == "top_management":
+            return True
+        
         if viewer == evaluatee or viewer.role in ['admin', 'ceo']: 
             return True
 
@@ -63,6 +72,10 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         evaluator = self.request.user
+
+        if evaluator.factory_role == "top_management":
+            raise PermissionDenied("Zavod direktorları ofis KPI dəyərləndirməsi yarada bilməz.")
+        
         evaluatee = serializer.validated_data["evaluatee"]
         task = serializer.validated_data["task"]
         
@@ -92,13 +105,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 logger.error(f"KPI e-poçtu göndərilərkən xəta: {e}", exc_info=True)
         
-        else:
-            logger.info(f"Evaluator: {evaluator.get_full_name()} ({evaluator.role})")
-            logger.info(f"Evaluatee: {evaluatee.get_full_name()} ({evaluatee.role})")
-            logger.info(f"Superior Evaluator: {eval_config['superior_evaluator'].get_full_name() if eval_config['superior_evaluator'] else 'None'}")
-            logger.info(f"TM Evaluator: {eval_config['tm_evaluator'].get_full_name() if eval_config['tm_evaluator'] else 'None'}")
-            logger.info(f"Is Dual Evaluation: {eval_config['is_dual_evaluation']}")
-            
+        else:            
             if evaluator.role == 'admin':
                 evaluation_type = serializer.validated_data.get('evaluation_type')
             else:
@@ -175,7 +182,17 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
     def kpi_dashboard_tasks(self, request):
         user = request.user
         
-        if user.role in ['admin', 'ceo']:
+        if user.factory_role == "top_management":
+            visible_user_ids = list(
+                User.objects.filter(
+                    is_active=True, 
+                    factory_role__isnull=True
+                ).exclude(
+                    role__in=['ceo', 'admin']
+                ).values_list('id', flat=True)
+            )
+            tasks_to_show_q = Q(assignee_id__in=visible_user_ids)
+        elif user.role in ['admin', 'ceo']:
             visible_user_ids = list(User.objects.filter(is_active=True).exclude(role__in=['ceo', 'admin']).values_list('id', flat=True))
             tasks_to_show_q = Q(assignee_id__in=visible_user_ids)
         else:
@@ -183,7 +200,7 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
             visible_user_ids = subordinate_ids + [user.id]
             tasks_to_show_q = Q(assignee_id__in=visible_user_ids)
         
-        if user.role not in ['admin', 'ceo', 'top_management']:
+        if user.role not in ['admin', 'ceo', 'top_management'] and user.factory_role != "top_management":
              tasks_to_show_q &= ~Q(assignee__role='top_management')
 
         queryset = Task.objects.filter(
@@ -206,6 +223,9 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='pending-for-me')
     def my_subordinates_pending_evaluations(self, request):
         user = request.user
+
+        if user.factory_role == "top_management":
+            return Response([])
         
         all_active_users = User.objects.filter(is_active=True).exclude(pk=user.pk)
         
@@ -393,6 +413,10 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         user = request.user
+
+        if user.factory_role == "top_management":
+            raise PermissionDenied("Zavod direktorları KPI dəyərləndirməsini redaktə edə bilməz.")
+        
         new_score = request.data.get('score')
         new_comment = request.data.get('comment')
         attachment = request.data.get('attachment')
@@ -462,7 +486,6 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
                     instance.attachment.delete(save=False)
                 instance.attachment = None
 
-        # History əlavə et
         if old_score is not None and old_score != new_score:
             history_entry = {
                 "timestamp": datetime.now().isoformat(),
@@ -483,6 +506,9 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='need-self-evaluation')
     def need_self_evaluation(self, request):
         user = request.user
+
+        if user.factory_role == "top_management":
+            return Response([])
         
         if user.role in ['ceo', 'admin']:
             return Response([])
@@ -507,6 +533,9 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='waiting-superior-evaluation')
     def waiting_superior_evaluation(self, request):
         user = request.user
+
+        if user.factory_role == "top_management":
+            return Response([])
         
         self_eval_exists = KPIEvaluation.objects.filter(
             task=OuterRef('pk'),
@@ -538,6 +567,9 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='i-evaluated')
     def i_evaluated(self, request):
         user = request.user
+
+        if user.factory_role == "top_management":
+            return Response([])
         
         evaluation_task_ids = KPIEvaluation.objects.filter(
             evaluator=user
@@ -558,6 +590,9 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='subordinates-need-evaluation')
     def subordinates_need_evaluation(self, request):
         user = request.user
+
+        if user.factory_role == "top_management":
+            return Response([])
         
         if user.role == 'ceo':
              subordinate_ids = list(user.get_kpi_subordinates().values_list('id', flat=True))
@@ -596,6 +631,9 @@ class KPIEvaluationViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='completed-evaluations')
     def completed_evaluations(self, request):
         user = request.user
+
+        if user.factory_role == "top_management":
+            return Response([])
         
         if user.role == 'ceo':
              subordinate_ids = list(user.get_kpi_subordinates().values_list('id', flat=True))

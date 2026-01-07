@@ -45,7 +45,10 @@ class DailyProductionFilter(filters.FilterSet):
         
         user = request.user
         
-        if user.role == 'admin':
+        if user.role in ['admin', 'ceo', 'top_management']:
+            return parent
+        
+        if user.factory_role == 'admin':
             return parent
         
         if not user.factory_role or not user.factory_type:

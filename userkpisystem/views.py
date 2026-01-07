@@ -25,6 +25,21 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[UserKPI get_queryset] User: {user.get_full_name()}, factory_role: {user.factory_role}, role: {user.role}")
+
+        if user.factory_role == "top_management":
+            logger.info("[UserKPI get_queryset] Factory top management detected - showing all office evaluations")
+            queryset = self.queryset.filter(
+                evaluatee__factory_role__isnull=True,
+                evaluatee__role__isnull=False 
+            ).order_by('-evaluation_date')
+            
+            evaluatee_info = queryset.values_list('evaluatee__id', 'evaluatee__first_name', 'evaluatee__last_name', 'evaluatee__factory_role', 'evaluatee__role')[:5]
+            logger.info(f"[UserKPI get_queryset] Factory top management queryset count: {queryset.count()}, Sample evaluatees: {list(evaluatee_info)}")
+            return queryset
 
         if user.role in ['admin', 'ceo']: 
             return self.queryset.order_by('-evaluation_date')
@@ -38,7 +53,12 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(q_objects).distinct().order_by('-evaluation_date')
 
     def perform_create(self, serializer):
-        evaluation = serializer.save(evaluator=self.request.user)
+        evaluator = self.request.user
+        
+        if evaluator.factory_role == "top_management":
+            raise PermissionDenied("Zavod direktorları ofis User KPI dəyərləndirməsi yarada bilməz.")
+        
+        evaluation = serializer.save(evaluator=evaluator)
         
         create_log_entry(
             actor=evaluation.evaluator,
@@ -50,12 +70,14 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             }
         )
 
-
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         user = request.user
+        
+        if user.factory_role == "top_management":
+            raise PermissionDenied("Zavod direktorları User KPI dəyərləndirməsini redaktə edə bilməz.")
+        
         evaluatee = instance.evaluatee
-
         is_admin = user.role == 'admin'
         
         if instance.evaluation_type == 'TOP_MANAGEMENT':
@@ -75,9 +97,43 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         
         return super().partial_update(request, *args, **kwargs)
 
+    def destroy(self, request, *args, **kwargs):
+        if request.user.factory_role == "top_management":
+            raise PermissionDenied("Zavod direktorları User KPI dəyərləndirməsini silə bilməz.")
+        
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=False, methods=['get'], url_path='evaluable-users')
     def evaluable_users(self, request):
         evaluator = request.user
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[UserKPI evaluable_users] User: {evaluator.get_full_name()}, factory_role: {evaluator.factory_role}, role: {evaluator.role}")
+        
+        if evaluator.factory_role == "top_management":
+            logger.info("[UserKPI evaluable_users] Factory top management - returning office users (view only)")
+            
+            date_str = request.query_params.get('params[date]')
+            try:
+                evaluation_date = datetime.strptime(date_str, '%Y-%m').date().replace(day=1) if date_str else timezone.now().date().replace(day=1)
+            except (ValueError, TypeError):
+                evaluation_date = timezone.now().date().replace(day=1)
+            
+            office_users = User.objects.filter(
+                factory_role__isnull=True,
+                role__isnull=False,
+                is_active=True
+            ).exclude(
+                role__in=['ceo', 'admin']
+            ).select_related('department', 'position').order_by('last_name', 'first_name')
+            
+            logger.info(f"[UserKPI evaluable_users] Factory TM viewing {office_users.count()} office users")
+            
+            context = {'request': request, 'evaluation_date': evaluation_date}
+            serializer = UserForEvaluationSerializer(office_users, many=True, context=context)
+            return Response(serializer.data)
+        
         date_str = request.query_params.get('params[date]')
         department_id = request.query_params.get('params[department]')
         evaluation_status = request.query_params.get('evaluation_status') 
@@ -86,7 +142,6 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             evaluation_date = datetime.strptime(date_str, '%Y-%m').date().replace(day=1) if date_str else timezone.now().date().replace(day=1)
         except (ValueError, TypeError):
             evaluation_date = timezone.now().date().replace(day=1)
-        
         
         def get_all_subordinates_recursive(user):
             direct_subs = user.get_user_kpi_subordinates()
@@ -99,10 +154,8 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             return all_subs
 
         direct_subordinates = evaluator.get_user_kpi_subordinates()
-        
         all_hierarchy_set = get_all_subordinates_recursive(evaluator)
         all_hierarchy_ids = {u.id for u in all_hierarchy_set}
-        
         all_users_ids_to_check = all_hierarchy_ids | set(direct_subordinates.values_list('id', flat=True))
         
         base_users_qs = User.objects.filter(id__in=all_users_ids_to_check, is_active=True).exclude(
@@ -140,9 +193,16 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
         context = {'request': request, 'evaluation_date': evaluation_date}
         serializer = UserForEvaluationSerializer(users_to_show, many=True, context=context)
         return Response(serializer.data)
+    
     @action(detail=False, methods=['get'], url_path='my-performance-card')
     def my_performance_card(self, request):
         user = request.user
+        
+        if user.factory_role == "top_management":
+            return Response({
+                'error': 'Zavod direktorları üçün ofis performans kartı mövcud deyil'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
         date_str = request.query_params.get('date')
 
         try:
@@ -167,7 +227,26 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
             
         user = self.request.user
-        if not (user.role in ['admin', 'ceo'] or user == evaluatee or user in evaluatee.get_kpi_superiors()):
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[UserKPI monthly_scores] User: {user.get_full_name()}, factory_role: {user.factory_role}, evaluatee: {evaluatee.get_full_name()}, evaluatee factory_role: {evaluatee.factory_role}")
+        
+        if user.factory_role == "top_management":
+            if evaluatee.factory_role:
+                logger.info(f"[UserKPI monthly_scores] Factory top management cannot view factory employee data")
+                raise PermissionDenied("Zavod direktorları zavod işçilərinin User KPI məlumatlarını görə bilməz.")
+            can_view = True
+        else:
+            can_view = (
+                user.role in ['admin', 'ceo'] or 
+                user == evaluatee or 
+                user in evaluatee.get_kpi_superiors()
+            )
+        
+        logger.info(f"[UserKPI monthly_scores] Can view: {can_view}")
+        
+        if not can_view:
             raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
 
         scores = UserEvaluation.objects.filter(evaluatee=evaluatee).select_related('evaluator')
@@ -199,7 +278,19 @@ class UserEvaluationViewSet(viewsets.ModelViewSet):
             return Response({'error': 'İşçi tapılmadı.'}, status=status.HTTP_404_NOT_FOUND)
 
         user = self.request.user
-        if not (user.role in ['admin', 'ceo'] or user == evaluatee or user in evaluatee.get_kpi_superiors()):
+        
+        if user.factory_role == "top_management":
+            if evaluatee.factory_role:
+                raise PermissionDenied("Zavod direktorları zavod işçilərinin User KPI məlumatlarını görə bilməz.")
+            can_view = True
+        else:
+            can_view = (
+                user.role in ['admin', 'ceo'] or 
+                user == evaluatee or 
+                user in evaluatee.get_kpi_superiors()
+            )
+        
+        if not can_view:
             raise PermissionDenied("Bu işçinin məlumatlarını görməyə icazəniz yoxdur.")
 
         try:

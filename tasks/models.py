@@ -33,7 +33,6 @@ class Task(models.Model):
     )
     start_date = models.DateField(null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
-    # estimated_hours = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     approved = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)

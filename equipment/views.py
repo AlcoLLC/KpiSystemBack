@@ -65,27 +65,20 @@ class DailyProductionViewSet(viewsets.ModelViewSet):
 
 
 class FactoryEmployeeListView(generics.ListAPIView):
-    """
-    Factory hierarchy əsasında işçi siyahısı.
-    Hər istifadəçi yalnız öz səlahiyyəti daxilindəki işçiləri görür.
-    """
     serializer_class = UserShortSerializer
 
     def get_queryset(self):
         user = self.request.user
         
-        # Admin bütün factory işçilərini görür
-        if user.role == 'admin':
+        if user.role in ['admin', 'ceo', 'top_management'] or user.factory_role == 'admin':
             return User.objects.filter(
                 factory_type__in=['dolum', 'bidon'], 
                 is_active=True
             ).order_by('first_name', 'last_name')
         
-        # Factory istifadəçisi deyilsə heç kim göstərmə
         if not user.factory_role or not user.factory_type:
             return User.objects.none()
         
-        # Base queryset - eyni factory_type
         queryset = User.objects.filter(
             factory_type=user.factory_type,
             is_active=True

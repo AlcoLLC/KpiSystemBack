@@ -22,7 +22,21 @@ class SubordinateListView(APIView):
     def get(self, request, *args, **kwargs):
         user = request.user
         
-        subordinates = user.get_subordinates()
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[Performance SubordinateList] User: {user.get_full_name()}, factory_role: {user.factory_role}, role: {user.role}")
+        
+        if user.factory_role == "top_management":
+            logger.info("[Performance SubordinateList] Factory top management - showing all office employees")
+            subordinates = User.objects.filter(
+                factory_role__isnull=True,
+                role__isnull=False,
+                is_active=True
+            ).exclude(
+                role__in=['admin', 'ceo']
+            ).order_by('first_name', 'last_name')
+        else:
+            subordinates = user.get_subordinates()
 
         search_query = request.query_params.get('search', None)
         if search_query:
@@ -34,6 +48,8 @@ class SubordinateListView(APIView):
         if department_id:
             subordinates = subordinates.filter(department__id=department_id)
 
+        logger.info(f"[Performance SubordinateList] Returning {subordinates.count()} subordinates")
+        
         serializer = SubordinateSerializer(subordinates, many=True, context={'request': request})
         return Response(serializer.data)
 
@@ -43,13 +59,38 @@ class PerformanceSummaryView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, slug=None, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        
         if slug == 'me' or slug is None:
             target_user = request.user
+            
+            if target_user.factory_role == "top_management":
+                logger.info(f"[Performance Summary] Factory top management {target_user.get_full_name()} cannot view own performance")
+                return Response({
+                    "detail": "Zavod direktorlarının öz performans məlumatları mövcud deyil."
+                }, status=status.HTTP_403_FORBIDDEN)
         else:
             try:
                 target_user = User.objects.get(slug=slug)
             except User.DoesNotExist:
                 return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+            
+            if request.user.factory_role == "top_management":
+                if target_user.factory_role:
+                    logger.info(f"[Performance Summary] Factory top management cannot view factory employee {target_user.get_full_name()}")
+                    return Response({
+                        "detail": "Zavod direktorları zavod işçilərinin performans məlumatlarını görə bilməz."
+                    }, status=status.HTTP_403_FORBIDDEN)
+                logger.info(f"[Performance Summary] Factory top management viewing office employee {target_user.get_full_name()}")
+            else:
+                can_view = (
+                    request.user == target_user or 
+                    request.user.role == 'admin' or 
+                    request.user in target_user.get_all_superiors()
+                )
+                if not can_view:
+                    return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
         all_tasks = Task.objects.filter(assignee=target_user)
         done_tasks = all_tasks.filter(status='DONE')
@@ -90,10 +131,29 @@ class KpiMonthlySummaryView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, slug, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        
         try:
             target_user = User.objects.get(slug=slug)
         except User.DoesNotExist:
             return Response({"detail": "İstifadəçi tapılmadı."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.factory_role == "top_management":
+            if target_user.factory_role:
+                logger.info(f"[KPI Monthly] Factory top management cannot view factory employee {target_user.get_full_name()}")
+                return Response({
+                    "detail": "Zavod direktorları zavod işçilərinin KPI məlumatlarını görə bilməz."
+                }, status=status.HTTP_403_FORBIDDEN)
+            logger.info(f"[KPI Monthly] Factory top management viewing office employee {target_user.get_full_name()}")
+        else:
+            can_view = (
+                request.user == target_user or 
+                request.user.role == 'admin' or 
+                request.user in target_user.get_all_superiors()
+            )
+            if not can_view:
+                return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
         start_date_str = request.query_params.get('start_date')
         end_date_str = request.query_params.get('end_date', timezone.now().strftime('%Y-%m-%d'))
@@ -140,13 +200,29 @@ class UserKpiScoreView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, slug, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        
         try:
             target_user = User.objects.get(slug=slug)
         except User.DoesNotExist:
             return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if not (request.user == target_user or request.user.role == 'admin' or request.user in target_user.get_all_superiors()):
-             return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.factory_role == "top_management":
+            if target_user.factory_role:
+                logger.info(f"[User KPI Score] Factory top management cannot view factory employee {target_user.get_full_name()}")
+                return Response({
+                    "detail": "Zavod direktorları zavod işçilərinin KPI məlumatlarını görə bilməz."
+                }, status=status.HTTP_403_FORBIDDEN)
+            logger.info(f"[User KPI Score] Factory top management viewing office employee {target_user.get_full_name()}")
+        else:
+            can_view = (
+                request.user == target_user or 
+                request.user.role == 'admin' or 
+                request.user in target_user.get_all_superiors()
+            )
+            if not can_view:
+                return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
         three_months_ago = timezone.now() - timedelta(days=90)
 

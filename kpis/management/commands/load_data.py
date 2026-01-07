@@ -1,14 +1,11 @@
-# Dosya: kpis/management/commands/load_data.py
-
 import json
 from django.core.management.base import BaseCommand
 from django.db import IntegrityError
 
-# --- Tüm Gerekli Modelleri Import Ediyoruz ---
 from accounts.models import User, Department, Position
 from tasks.models import Task
 from kpis.models import KPIEvaluation
-from userkpisystem.models import UserEvaluation # Bu da aylık değerlendirmeler için
+from userkpisystem.models import UserEvaluation
 
 class Command(BaseCommand):
     help = 'JSON dosyasından tüm appler için veri yükler'
@@ -29,7 +26,6 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f'"{json_path}" dosyası geçerli bir JSON değil.'))
             return
 
-        # --- 1. ADIM: POZİSYONLARI YÜKLE (Bağımlılık yok) ---
         if 'positions' in data:
             self.stdout.write('Vəzifələr yüklənir...')
             for pos_data in data['positions']:
@@ -39,11 +35,9 @@ class Command(BaseCommand):
                 else:
                     self.stdout.write(f"  - Vəzifə artıq mövcuddur: {pos.name}")
 
-        # --- 2. ADIM: DEPARTMANLARI YÜKLE (Bağımlılık yok) ---
         if 'departments' in data:
             self.stdout.write('Departamentlər yüklənir...')
             for dept_data in data['departments']:
-                # manager, lead, top_management alanlarını sonra bağlayacağız
                 dept_name = dept_data.get('name')
                 if not dept_name:
                     continue
@@ -53,7 +47,6 @@ class Command(BaseCommand):
                 else:
                     self.stdout.write(f"  - Departament artıq mövcuddur: {dept.name}")
 
-        # --- 3. ADIM: KULLANICILARI YÜKLE (Pozisyon ve Departman'a bağlı) ---
         if 'users' in data:
             self.stdout.write('İstifadəçilər yüklənir...')
             for user_data in data['users']:
@@ -62,7 +55,6 @@ class Command(BaseCommand):
                         self.stdout.write(f"  - {user_data['username']} zaten mevcut, atlanıyor.")
                         continue
                     
-                    # --- İlişkileri (Foreign Key) bul ---
                     position_name = user_data.pop('position', None)
                     department_name = user_data.pop('department', None)
                     
@@ -76,7 +68,6 @@ class Command(BaseCommand):
                     
                     password = user_data.pop('password', 'defaultpassword123')
                     
-                    # --- Kullanıcıyı oluştur (superuser veya normal user) ---
                     if user_data.get('is_superuser', False):
                         User.objects.create_superuser(
                             password=password, 
@@ -100,7 +91,6 @@ class Command(BaseCommand):
                 except Exception as e:
                     self.stdout.write(self.style.ERROR(f"  ! Kullanıcı yüklenirken hata: {e} - Veri: {user_data}"))
 
-        # --- 4. ADIM: DEPARTMAN YÖNETİCİLERİNİ BAĞLA (Kullanıcılar yüklendikten sonra) ---
         if 'departments' in data:
             self.stdout.write('Departament rəhbərləri bağlanır...')
             for dept_data in data['departments']:
@@ -113,9 +103,9 @@ class Command(BaseCommand):
                     if 'department_lead' in dept_data and dept_data['department_lead']:
                         dept.department_lead = User.objects.get(username=dept_data['department_lead'])
                     
-                    dept.save() # Yöneticileri kaydet
+                    dept.save()
 
-                    if 'top_management' in dept_data: # ManyToMany alanı
+                    if 'top_management' in dept_data:
                         for tm_username in dept_data['top_management']:
                             tm_user = User.objects.get(username=tm_username)
                             dept.top_management.add(tm_user)
@@ -125,12 +115,10 @@ class Command(BaseCommand):
                 except User.DoesNotExist as e:
                      self.stdout.write(self.style.ERROR(f"  ! Rəhbər istifadəçi tapılmadı: {e}"))
 
-        # --- 5. ADIM: TAPŞIRIQLARI (TASKS) YÜKLE (Kullanıcılara bağlı) ---
         if 'tasks' in data:
             self.stdout.write('Tapşırıqlar yüklənir...')
             for task_data in data['tasks']:
                 try:
-                    # JSON'da 'id' varsa ve çakışma yaratıyorsa kaldır
                     task_data.pop('id', None) 
                     
                     assignee = User.objects.get(username=task_data.pop('assignee'))
@@ -149,13 +137,10 @@ class Command(BaseCommand):
                 except Exception as e:
                     self.stdout.write(self.style.ERROR(f"  ! Tapşırıq yüklenirken hata: {e} - Veri: {task_data}"))
 
-        # --- 6. ADIM: KPI DEĞERLENDİRMELERİNİ YÜKLE (Task ve Kullanıcılara bağlı) ---
-        # JSON'da 'kpis' yerine 'kpi_evaluations' anahtarı bekliyoruz
         if 'kpi_evaluations' in data:
             self.stdout.write('KPI Değerlendirmeleri (kpis.models) yükleniyor...')
             for kpi_data in data['kpi_evaluations']:
                 try:
-                    # JSON'da Task'ı ID ile verdiğinizi varsayıyoruz
                     task = Task.objects.get(id=kpi_data.pop('task_id')) 
                     evaluator = User.objects.get(username=kpi_data.pop('evaluator'))
                     evaluatee = User.objects.get(username=kpi_data.pop('evaluatee'))
@@ -164,7 +149,7 @@ class Command(BaseCommand):
                         task=task,
                         evaluator=evaluator,
                         evaluatee=evaluatee,
-                        **kpi_data # self_score, superior_score vb. alanlar
+                        **kpi_data
                     )
                     self.stdout.write(f"  + Değerlendirme yaradıldı: {task.title}")
                 
@@ -175,7 +160,6 @@ class Command(BaseCommand):
                 except Exception as e:
                     self.stdout.write(self.style.ERROR(f"  ! KPI Değerlendirmesi yüklenirken hata: {e} - Veri: {kpi_data}"))
         
-        # --- 7. ADIM: AYLIK KULLANICI DEĞERLENDİRMELERİNİ YÜKLE (Kullanıcılara bağlı) ---
         if 'user_evaluations' in data:
             self.stdout.write('Aylıq Değerlendirmeler (userkpisystem.models) yükleniyor...')
             for eval_data in data['user_evaluations']:
@@ -186,7 +170,7 @@ class Command(BaseCommand):
                     UserEvaluation.objects.create(
                         evaluator=evaluator,
                         evaluatee=evaluatee,
-                        **eval_data # score, comment, evaluation_date vb.
+                        **eval_data
                     )
                     self.stdout.write(f"  + Aylıq Dəyərləndirmə: {evaluatee.username} ({eval_data['evaluation_date']})")
                 
