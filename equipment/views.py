@@ -39,10 +39,6 @@ class DailyProductionViewSet(viewsets.ModelViewSet):
     search_fields = ['equipment__name', 'note']
 
     def get_queryset(self):
-        """
-        Factory hierarchy əsasında queryset qaytarır.
-        Filter class-ında da əlavə filtrasiya var.
-        """
         return DailyProduction.objects.all().select_related(
             'equipment'
         ).prefetch_related(

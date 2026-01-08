@@ -7,10 +7,10 @@ from accounts.serializers import UserSerializer
 class TaskSerializer(serializers.ModelSerializer):
     assignee_details = serializers.StringRelatedField(source='assignee', read_only=True)
     created_by_details = serializers.StringRelatedField(source='created_by', read_only=True)
-    assignee = serializers.PrimaryKeyRelatedField(queryset=User.objects.all()) 
+    assignee = serializers.JSONField(write_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     priority_display = serializers.CharField(source='get_priority_display', read_only=True)
-    evaluations = KPIEvaluationSerializer(many=True, read_only=True)
+    evaluations = KPIEvaluationSerializer(read_only=True)
     position_name = serializers.CharField(source='position.name', read_only=True, default=None)
 
     assignee_obj = serializers.SerializerMethodField(read_only=True)
@@ -62,7 +62,6 @@ class TaskSerializer(serializers.ModelSerializer):
         return None
     
     def get_evaluations_list(self, obj):
-        """Tapşırığın bütün dəyərləndirmələri"""
         from kpis.serializers import KPIEvaluationSerializer
         evaluations = obj.evaluations.all().select_related('evaluator', 'evaluatee')
         return KPIEvaluationSerializer(evaluations, many=True).data

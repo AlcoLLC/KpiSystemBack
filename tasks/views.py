@@ -11,12 +11,13 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.views import APIView
 from .models import Task, CalendarNote
 from .serializers import TaskSerializer, TaskUserSerializer, CalendarNoteSerializer
-from .utils import send_task_notification_email
 from .filters import TaskFilter
 from .pagination import CustomPageNumberPagination
 
 from reports.utils import create_log_entry
 from reports.models import ActivityLog
+from accounts.models import User
+from django.db import transaction
 
 
 def get_visible_tasks(user):
@@ -70,49 +71,58 @@ class TaskViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return get_visible_tasks(self.request.user).order_by('-created_at')
 
-    def perform_create(self, serializer):
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        
+        serializer.is_valid(raise_exception=True)
+        
         creator = self.request.user
+        assignees_data = request.data.get('assignee')
 
-        if creator.factory_role == "top_management":
-            raise PermissionDenied("Zavod direktorları ofis tapşırıqları yarada bilməz.")
-        
-        assignee = serializer.validated_data["assignee"]
+        if not isinstance(assignees_data, list):
+            assignees_data = [assignees_data]
 
-        if creator != assignee and creator.role != 'admin':
-            subordinates = creator.get_subordinates()
-            if assignee not in subordinates:
-                raise PermissionDenied("Siz yalnız tabeliyinizdə olan işçilərə tapşırıq təyin edə bilərsiniz.")
+        created_tasks = []
 
-        is_approved = True
-        task_status = "TODO"
-        needs_approval_email = False
+        with transaction.atomic():
+            for assignee_id in assignees_data:
+                try:
+                    assignee_user = User.objects.get(pk=assignee_id)
+                    
+                    if creator != assignee_user and creator.role != 'admin':
+                        subordinates = creator.get_subordinates()
+                        if assignee_user not in subordinates:
+                            continue 
 
-        if creator == assignee:
-            superior = creator.get_superior()
-            if superior: 
-                is_approved = False
-                task_status = "PENDING"
-                needs_approval_email = True
-        
-        
-        task = serializer.save(
-            created_by=creator, 
-            approved=is_approved, 
-            status=task_status
-        )
+                    task = Task.objects.create(
+                        title=serializer.validated_data['title'],
+                        description=serializer.validated_data.get('description', ''),
+                        status=serializer.validated_data.get('status', 'TODO'),
+                        priority=serializer.validated_data.get('priority', 'MEDIUM'),
+                        start_date=serializer.validated_data.get('start_date'),
+                        due_date=serializer.validated_data.get('due_date'),
+                        created_by=creator,
+                        assignee=assignee_user,
+                        approved=True
+                    )
+                    created_tasks.append(task)
 
-        create_log_entry(
-            actor=creator,
-            action_type=ActivityLog.ActionTypes.TASK_CREATED,
-            target_user=assignee,
-            target_task=task,
-            details={'task_title': task.title}
-        )
+                    create_log_entry(
+                        actor=creator,
+                        action_type=ActivityLog.ActionTypes.TASK_CREATED,
+                        target_user=assignee_user,
+                        target_task=task,
+                        details={'task_title': task.title}
+                    )
 
-        if needs_approval_email:
-            send_task_notification_email(task, notification_type="approval_request")
-        elif creator != assignee:
-            send_task_notification_email(task, notification_type="new_assignment")
+                except User.DoesNotExist:
+                    continue
+
+        if not created_tasks:
+            return Response({"detail": "İcraçı tapılmadı."}, status=status.HTTP_400_BAD_REQUEST)
+
+        output_serializer = self.get_serializer(created_tasks[0])
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):
         task = self.get_object()

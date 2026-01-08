@@ -512,7 +512,6 @@ class User(AbstractUser):
             return None
         
         def find_next_available_superior(user):
-            """Birbaşa üst rəhbəri tapır"""
             if user.role == 'employee':
                 if user.department.manager and user.department.manager.is_active:
                     return user.department.manager
@@ -654,7 +653,6 @@ class User(AbstractUser):
         }
     
     def get_evaluation_config_task(self):
-        """Dəyərləndirmə konfiqurasiyasını qaytarır"""
         if self.role in ['admin', 'ceo']:
             return {
                 'requires_self': False,

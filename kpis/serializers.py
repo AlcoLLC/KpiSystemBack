@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import KPIEvaluation
 from tasks.models import Task
 from accounts.models import User
+from django.db import models
 
 class KPIEvaluationSerializer(serializers.ModelSerializer):
     task_id = serializers.IntegerField(write_only=True)
@@ -29,6 +30,8 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
                             ]
 
     def get_task(self, obj):
+        if not hasattr(obj, 'task'):
+            return None
         if obj.task:
             return {
                 'id': obj.task.id,
@@ -38,26 +41,28 @@ class KPIEvaluationSerializer(serializers.ModelSerializer):
         return None
 
     def get_evaluator(self, obj):
+        if not hasattr(obj, 'evaluator') or isinstance(obj, models.Manager) or not obj.evaluator:
+            return None
+        
         position_name = obj.evaluator.position.name if obj.evaluator.position else None
-        if obj.evaluator:
-            return {
-                'id': obj.evaluator.id,
-                'username': obj.evaluator.username,
-                'full_name': obj.evaluator.get_full_name(),
-                'position_name': position_name,
-            }
-        return None
+        return {
+            'id': obj.evaluator.id,
+            'username': obj.evaluator.username,
+            'full_name': obj.evaluator.get_full_name(),
+            'position_name': position_name,
+        }
 
     def get_evaluatee(self, obj):
-        position_name = obj.evaluator.position.name if obj.evaluator.position else None
-        if obj.evaluatee:
-            return {
-                'id': obj.evaluatee.id,
-                'username': obj.evaluatee.username,
-                'full_name': obj.evaluatee.get_full_name(),
-                'position_name': position_name,
-            }
-        return None
+        if not hasattr(obj, 'evaluatee') or isinstance(obj, models.Manager) or not obj.evaluatee:
+            return None
+        
+        position_name = obj.evaluatee.position.name if obj.evaluatee.position else None
+        return {
+            'id': obj.evaluatee.id,
+            'username': obj.evaluatee.username,
+            'full_name': obj.evaluatee.get_full_name(),
+            'position_name': position_name,
+        }
 
     def validate(self, data):
         task_id = data.get('task_id')
